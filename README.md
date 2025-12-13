@@ -23,7 +23,14 @@
 
 ```toml
 [dependencies]
-netconnpool = { path = "." }
+netconnpool = "1.0.0"
+```
+
+或者从GitHub直接使用：
+
+```toml
+[dependencies]
+netconnpool = { git = "https://github.com/vistone/netconnpool", tag = "v1.0.0" }
 ```
 
 ## 快速开始
@@ -34,6 +41,7 @@ netconnpool = { path = "." }
 
 ```rust
 use netconnpool::*;
+use netconnpool::config::{DefaultConfig, ConnectionType};
 use std::net::TcpStream;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -76,6 +84,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ```rust
 use netconnpool::*;
+use netconnpool::config::DefaultServerConfig;
 use std::net::TcpListener;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -127,13 +136,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## 测试
 
-运行测试：
+### 运行单元测试
 
 ```bash
-cargo test
+cargo test --lib
 ```
 
-运行特定测试：
+### 运行压力测试
+
+```bash
+# 运行所有压力测试
+cargo test --test stress_test -- --ignored --nocapture
+
+# 运行性能基准测试
+cargo test --test benchmark_test -- --ignored --nocapture
+
+# 运行集成测试
+cargo test --test integration_test -- --ignored --nocapture
+
+# 使用测试脚本运行所有测试
+./test/run_stress_tests.sh
+```
+
+### 运行特定测试
 
 ```bash
 cargo test --lib test_pool_creation
@@ -161,6 +186,10 @@ netconnpool/
 └── Cargo.toml            # 项目配置
 ```
 
+## 版本
+
+当前版本：**1.0.0**
+
 ## 许可证
 
 BSD-3-Clause License
@@ -168,3 +197,11 @@ BSD-3-Clause License
 ## 参考
 
 - [Go 版本 netconnpool](https://github.com/vistone/netconnpool)
+
+## 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+## 更新日志
+
+详见 [CHANGELOG.md](CHANGELOG.md)

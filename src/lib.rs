@@ -39,6 +39,7 @@ pub mod stats;
 pub mod udp_utils;
 
 pub use config::{Config, ConnectionType};
+pub use config::{DefaultConfig, DefaultServerConfig};
 pub use connection::Connection;
 pub use errors::*;
 pub use ipversion::{DetectIPVersion, IPVersion, ParseIPVersion};

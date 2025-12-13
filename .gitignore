@@ -1,0 +1,31 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 编译产物
+*.o
+*.so
+*.dylib
+*.dll
+*.exe
+
+# 测试相关
+*.log
+test-results/
+
+# 临时文件
+*.tmp
+*.bak
+*.orig
