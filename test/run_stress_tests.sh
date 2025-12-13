@@ -81,5 +81,37 @@ timeout $TIMEOUT cargo test --test integration_test test_concurrent_pool_operati
 
 echo ""
 echo "=========================================="
+echo "统计模块专项测试"
+echo "=========================================="
+
+echo "16. 运行统计模块并发更新测试..."
+timeout $TIMEOUT cargo test --test stats_stress_test test_stats_concurrent_updates -- --ignored --nocapture 2>&1 | head -100 || echo "测试超时或失败"
+
+echo ""
+echo "17. 运行统计模块内存泄漏测试..."
+timeout $TIMEOUT cargo test --test stats_stress_test test_stats_memory_leak -- --ignored --nocapture 2>&1 | head -100 || echo "测试超时或失败"
+
+echo ""
+echo "18. 运行统计模块竞争条件测试..."
+timeout $TIMEOUT cargo test --test stats_stress_test test_stats_race_condition -- --ignored --nocapture 2>&1 | head -100 || echo "测试超时或失败"
+
+echo ""
+echo "19. 运行统计模块死循环防护测试..."
+timeout $TIMEOUT cargo test --test stats_stress_test test_stats_infinite_loop_prevention -- --ignored --nocapture 2>&1 | head -100 || echo "测试超时或失败"
+
+echo ""
+echo "20. 运行统计模块锁竞争测试..."
+timeout $TIMEOUT cargo test --test stats_stress_test test_stats_lock_contention -- --ignored --nocapture 2>&1 | head -100 || echo "测试超时或失败"
+
+echo ""
+echo "21. 运行统计模块详细竞争条件测试..."
+timeout $TIMEOUT cargo test --test stats_race_test test_stats_race_condition_detailed -- --ignored --nocapture 2>&1 | head -100 || echo "测试超时或失败"
+
+echo ""
+echo "22. 运行统计模块读取一致性测试..."
+timeout $TIMEOUT cargo test --test stats_race_test test_stats_get_stats_consistency -- --ignored --nocapture 2>&1 | head -100 || echo "测试超时或失败"
+
+echo ""
+echo "=========================================="
 echo "所有压力测试完成"
 echo "=========================================="
