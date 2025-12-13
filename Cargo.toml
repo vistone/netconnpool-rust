@@ -1,0 +1,22 @@
+[package]
+name = "netconnpool"
+version = "0.1.0"
+edition = "2021"
+authors = ["vistone"]
+description = "一个功能全面、高性能的 Rust 语言网络连接池管理库"
+license = "BSD-3-Clause"
+repository = "https://github.com/vistone/netconnpool"
+keywords = ["connection-pool", "network", "tcp", "udp", "ipv4", "ipv6"]
+categories = ["network-programming", "asynchronous"]
+
+[dependencies]
+thiserror = "1.0"
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[lib]
+name = "netconnpool"
+path = "src/lib.rs"
+
+# 示例文件将在后续添加
