@@ -19,4 +19,23 @@ tokio-test = "0.4"
 name = "netconnpool"
 path = "src/lib.rs"
 
-# 示例文件将在后续添加
+# 集成测试配置 - 使用test目录
+[[test]]
+name = "stress_test"
+path = "test/stress_test.rs"
+
+[[test]]
+name = "benchmark_test"
+path = "test/benchmark_test.rs"
+
+[[test]]
+name = "integration_test"
+path = "test/integration_test.rs"
+
+[[test]]
+name = "stats_stress_test"
+path = "test/stats_stress_test.rs"
+
+[[test]]
+name = "stats_race_test"
+path = "test/stats_race_test.rs"
