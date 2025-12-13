@@ -1,0 +1,1 @@
+Option<Box<dyn for<'a> Fn(&'a ConnectionType) -> std::result::Result<(), Box<(dyn std::error::Error + Send + Sync + 'static)>> + Send + Sync>>
