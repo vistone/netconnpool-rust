@@ -156,12 +156,14 @@ fn generate_performance_report() {
             thread::spawn(move || {
                 for _ in 0..io_ops_per_thread {
                     if let Ok(conn) = pool.Get() {
-                        if let Some(mut stream) = conn.GetTcpConn().map(|s| s.try_clone().ok()).flatten() {
-                            let data = vec![0u8; io_data_size];
-                            if stream.write_all(&data).is_ok() {
-                                let mut buf = vec![0u8; io_data_size];
-                                if stream.read_exact(&mut buf).is_ok() {
-                                    *total_io_bytes.lock().unwrap() += io_data_size as u64 * 2;
+                        if let Some(stream_ref) = conn.GetTcpConn() {
+                            if let Ok(mut stream) = stream_ref.try_clone() {
+                                let data = vec![0u8; io_data_size];
+                                if stream.write_all(&data).is_ok() {
+                                    let mut buf = vec![0u8; io_data_size];
+                                    if stream.read_exact(&mut buf).is_ok() {
+                                        *total_io_bytes.lock().unwrap() += io_data_size as u64 * 2;
+                                    }
                                 }
                             }
                         }

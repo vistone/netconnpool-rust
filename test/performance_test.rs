@@ -107,7 +107,7 @@ fn test_get_put_throughput() {
     
     let result = PerformanceResult {
         test_name: "获取/归还操作吞吐量测试".to_string(),
-        operations: iterations,
+        operations: iterations as u64,
         duration,
         throughput_ops_per_sec: iterations as f64 / duration.as_secs_f64(),
         avg_latency_ns: avg_latency,
@@ -249,12 +249,14 @@ fn test_io_throughput() {
     let start = Instant::now();
     for _ in 0..iterations {
         if let Ok(conn) = pool.Get() {
-            if let Some(mut stream) = conn.GetTcpConn().map(|s| s.try_clone().ok()).flatten() {
-                let data = vec![0u8; data_size];
-                if stream.write_all(&data).is_ok() {
-                    let mut buf = vec![0u8; data_size];
-                    if stream.read_exact(&mut buf).is_ok() {
-                        total_bytes += data_size as u64 * 2; // 读写各一次
+            if let Some(stream_ref) = conn.GetTcpConn() {
+                if let Ok(mut stream) = stream_ref.try_clone() {
+                    let data = vec![0u8; data_size];
+                    if stream.write_all(&data).is_ok() {
+                        let mut buf = vec![0u8; data_size];
+                        if stream.read_exact(&mut buf).is_ok() {
+                            total_bytes += data_size as u64 * 2; // 读写各一次
+                        }
                     }
                 }
             }
@@ -480,12 +482,14 @@ fn test_high_load_io_throughput() {
             thread::spawn(move || {
                 for _ in 0..operations_per_thread {
                     if let Ok(conn) = pool.Get() {
-                        if let Some(mut stream) = conn.GetTcpConn().map(|s| s.try_clone().ok()).flatten() {
-                            let data = vec![0u8; data_size];
-                            if stream.write_all(&data).is_ok() {
-                                let mut buf = vec![0u8; data_size];
-                                if stream.read_exact(&mut buf).is_ok() {
-                                    *total_bytes.lock().unwrap() += data_size as u64 * 2;
+                        if let Some(stream_ref) = conn.GetTcpConn() {
+                            if let Ok(mut stream) = stream_ref.try_clone() {
+                                let data = vec![0u8; data_size];
+                                if stream.write_all(&data).is_ok() {
+                                    let mut buf = vec![0u8; data_size];
+                                    if stream.read_exact(&mut buf).is_ok() {
+                                        *total_bytes.lock().unwrap() += data_size as u64 * 2;
+                                    }
                                 }
                             }
                         }
@@ -627,7 +631,7 @@ fn test_comprehensive_performance() {
     let num_threads = 100;
     let operations_per_thread = 10000;
     let total_operations = num_threads * operations_per_thread;
-    let mut total_io_bytes = Arc::new(std::sync::Mutex::new(0u64));
+    let total_io_bytes = Arc::new(std::sync::Mutex::new(0u64));
     
     let start = Instant::now();
     let handles: Vec<_> = (0..num_threads)
@@ -646,7 +650,8 @@ fn test_comprehensive_performance() {
                         1 => {
                             // 带IO操作
                             if let Ok(conn) = pool.Get() {
-                                if let Some(mut stream) = conn.GetTcpConn().map(|s| s.try_clone().ok()).flatten() {
+                            if let Some(stream_ref) = conn.GetTcpConn() {
+                                if let Ok(mut stream) = stream_ref.try_clone() {
                                     let data = vec![0u8; 512];
                                     if stream.write_all(&data).is_ok() {
                                         let mut buf = vec![0u8; 512];
@@ -655,6 +660,7 @@ fn test_comprehensive_performance() {
                                         }
                                     }
                                 }
+                            }
                                 let _ = pool.Put(conn);
                             }
                         }
