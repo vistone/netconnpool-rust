@@ -93,6 +93,12 @@ cargo test --test stress_test test_concurrent_connections -- --ignored --nocaptu
 
 # 运行所有压力测试
 cargo test --test stress_test -- --ignored --nocapture
+
+# 运行统计模块压力测试
+cargo test --test stats_stress_test -- --ignored --nocapture
+
+# 运行统计模块竞争条件测试
+cargo test --test stats_race_test -- --ignored --nocapture
 ```
 
 ### 运行所有测试（包括压力测试）

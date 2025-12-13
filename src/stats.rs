@@ -260,20 +260,35 @@ impl StatsCollector {
         let nanos = duration.as_nanos() as u64;
         self.stats.TotalGetTime.fetch_add(nanos, Ordering::Relaxed);
 
-        // 计算平均时间
-        for _ in 0..3 {
-            let total_gets = self.stats.SuccessfulGets.load(Ordering::Relaxed);
+        // 计算平均时间（使用重试机制避免竞争条件，最多重试3次）
+        let max_retries = 3;
+        for retry in 0..max_retries {
+            let total_gets = self.stats.SuccessfulGets.load(Ordering::Acquire);
             if total_gets > 0 {
-                let total_time = self.stats.TotalGetTime.load(Ordering::Relaxed);
-                let total_gets2 = self.stats.SuccessfulGets.load(Ordering::Relaxed);
-                if total_gets == total_gets2 || total_gets2 == 0 {
+                let total_time = self.stats.TotalGetTime.load(Ordering::Acquire);
+                // 再次检查，确保值没有变化
+                let total_gets2 = self.stats.SuccessfulGets.load(Ordering::Acquire);
+                if total_gets == total_gets2 {
+                    // 值稳定，可以安全计算平均值
                     if total_gets2 > 0 {
                         let avg_time = total_time / total_gets2 as u64;
-                        self.stats.AverageGetTime.store(avg_time, Ordering::Relaxed);
+                        self.stats.AverageGetTime.store(avg_time, Ordering::Release);
                     }
                     break;
                 }
+                // 如果值变化了，且不是最后一次重试，继续重试
+                if retry < max_retries - 1 {
+                    continue;
+                }
+                // 最后一次重试，使用当前值计算
+                if total_gets2 > 0 {
+                    let total_time2 = self.stats.TotalGetTime.load(Ordering::Acquire);
+                    let avg_time = total_time2 / total_gets2 as u64;
+                    self.stats.AverageGetTime.store(avg_time, Ordering::Release);
+                }
+                break;
             } else {
+                // total_gets 为 0，不需要计算平均值
                 break;
             }
         }
@@ -380,13 +395,16 @@ impl StatsCollector {
     }
 
     fn update_time(&self) {
-        let mut last_time = self.last_update_time.write().unwrap();
-        let now = Instant::now();
-        // 减少时间更新频率，每100ms更新一次
-        if now.duration_since(*last_time) < Duration::from_millis(100) {
-            return;
+        // 使用 try_write 避免在高并发下阻塞
+        // 如果无法获取写锁，说明其他线程正在更新，可以跳过本次更新
+        if let Ok(mut last_time) = self.last_update_time.try_write() {
+            let now = Instant::now();
+            // 减少时间更新频率，每100ms更新一次
+            if now.duration_since(*last_time) >= Duration::from_millis(100) {
+                *last_time = now;
+            }
         }
-        *last_time = now;
+        // 如果无法获取锁，说明其他线程正在更新，跳过本次更新是安全的
     }
 }
 
