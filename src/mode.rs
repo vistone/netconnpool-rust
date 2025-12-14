@@ -2,18 +2,13 @@
 // All rights reserved.
 
 /// PoolMode 连接池模式
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum PoolMode {
     /// PoolModeClient 客户端模式：主动连接到服务器
+    #[default]
     Client = 0,
     /// PoolModeServer 服务器端模式：接受客户端连接
     Server = 1,
-}
-
-impl Default for PoolMode {
-    fn default() -> Self {
-        PoolMode::Client
-    }
 }
 
 impl std::fmt::Display for PoolMode {

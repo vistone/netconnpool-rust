@@ -30,7 +30,7 @@ fn handle_client(mut stream: TcpStream, stats: Arc<ServerStats>) {
             Ok(n) => {
                 stats.total_bytes_received.fetch_add(n, Ordering::Relaxed);
                 // Echo data back
-                if let Err(_) = stream.write_all(&buffer[0..n]) {
+                if stream.write_all(&buffer[0..n]).is_err() {
                     break;
                 }
                 stats.total_bytes_sent.fetch_add(n, Ordering::Relaxed);

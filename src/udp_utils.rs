@@ -3,14 +3,14 @@
 
 use std::io::{self};
 use std::net::UdpSocket;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// clear_udp_read_buffer 清空UDP连接的读取缓冲区
 /// 这对于防止UDP连接在连接池中复用时的数据混淆非常重要
 /// 使用非阻塞模式快速清空缓冲区
 pub fn clear_udp_read_buffer(
     socket: &UdpSocket,
-    _timeout: Duration,
+    timeout: Duration,
     max_packets: usize,
 ) -> io::Result<()> {
     // 切换到非阻塞模式
@@ -18,8 +18,12 @@ pub fn clear_udp_read_buffer(
 
     let mut buf = [0u8; 65536]; // 足够大的缓冲区
     let max = if max_packets == 0 { 100 } else { max_packets };
+    let start = Instant::now();
 
     for _ in 0..max {
+        if !timeout.is_zero() && start.elapsed() >= timeout {
+            break;
+        }
         match socket.recv(&mut buf) {
             Ok(_) => {
                 // 成功读取，继续清理
@@ -49,10 +53,7 @@ pub fn clear_udp_read_buffer(
 pub fn has_udp_data_in_buffer(socket: &UdpSocket) -> bool {
     let _ = socket.set_nonblocking(true);
     let mut buf = [0u8; 1];
-    let has_data = match socket.peek(&mut buf) {
-        Ok(_) => true,
-        Err(_) => false,
-    };
+    let has_data = socket.peek(&mut buf).is_ok();
     let _ = socket.set_nonblocking(false);
     has_data
 }

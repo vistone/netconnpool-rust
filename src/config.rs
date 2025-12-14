@@ -7,6 +7,19 @@ use crate::protocol::Protocol;
 use std::net::{TcpStream, UdpSocket};
 use std::time::Duration;
 
+/// CloseConn 连接关闭回调类型
+pub type CloseConnCallback = dyn Fn(&ConnectionType) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>
+    + Send
+    + Sync;
+
+/// OnCreated 连接创建后回调类型
+pub type OnCreatedCallback = dyn Fn(&ConnectionType) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>
+    + Send
+    + Sync;
+
+/// OnBorrow/OnReturn 借出/归还回调类型
+pub type BorrowReturnCallback = dyn Fn(&ConnectionType) + Send + Sync;
+
 /// Dialer 连接创建函数类型（客户端模式）
 /// 返回网络连接和错误
 /// 参数 Option<Protocol> 表示调用方请求的协议，Dialer 应尽量满足
@@ -95,34 +108,16 @@ pub struct Config {
 
     /// CloseConn 连接关闭函数（可选）
     /// 如果为None，将尝试关闭连接
-    pub close_conn: Option<
-        Box<
-            dyn Fn(
-                    &ConnectionType,
-                )
-                    -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>
-                + Send
-                + Sync,
-        >,
-    >,
+    pub close_conn: Option<Box<CloseConnCallback>>,
 
     /// OnCreated 连接创建后调用
-    pub on_created: Option<
-        Box<
-            dyn Fn(
-                    &ConnectionType,
-                )
-                    -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>
-                + Send
-                + Sync,
-        >,
-    >,
+    pub on_created: Option<Box<OnCreatedCallback>>,
 
     /// OnBorrow 连接从池中取出前调用
-    pub on_borrow: Option<Box<dyn Fn(&ConnectionType) + Send + Sync>>,
+    pub on_borrow: Option<Box<BorrowReturnCallback>>,
 
     /// OnReturn 连接归还池中前调用
-    pub on_return: Option<Box<dyn Fn(&ConnectionType) + Send + Sync>>,
+    pub on_return: Option<Box<BorrowReturnCallback>>,
 
     /// EnableStats 是否启用统计信息
     pub enable_stats: bool,
@@ -264,7 +259,7 @@ impl Config {
                 reason: "connection_timeout 必须大于 0".to_string(),
             });
         }
-        
+
         // 添加更多验证
         if self.max_idle_connections > 0
             && self.max_connections > 0
@@ -277,7 +272,7 @@ impl Config {
                 ),
             });
         }
-        
+
         if self.idle_timeout > self.max_lifetime {
             return Err(NetConnPoolError::InvalidConfig {
                 reason: format!(
@@ -286,7 +281,7 @@ impl Config {
                 ),
             });
         }
-        
+
         if self.health_check_timeout > self.health_check_interval {
             return Err(NetConnPoolError::InvalidConfig {
                 reason: format!(

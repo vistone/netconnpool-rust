@@ -27,7 +27,7 @@ fn benchmark_get_put_operations() {
     let mut config = default_config();
     config.dialer = Some(Box::new(move |_| {
         TcpStream::connect(&addr)
-            .map(|s| ConnectionType::Tcp(s))
+            .map(ConnectionType::Tcp)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }));
     let max_conns = 100;
@@ -76,7 +76,7 @@ fn benchmark_concurrent_get_put() {
     let mut config = default_config();
     config.dialer = Some(Box::new(move |_| {
         TcpStream::connect(&addr)
-            .map(|s| ConnectionType::Tcp(s))
+            .map(ConnectionType::Tcp)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }));
     let max_conns = 100;
@@ -138,7 +138,7 @@ fn benchmark_connection_creation() {
     let mut config = default_config();
     config.dialer = Some(Box::new(move |_| {
         TcpStream::connect(&addr)
-            .map(|s| ConnectionType::Tcp(s))
+            .map(ConnectionType::Tcp)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }));
     let max_conns = 1000;
@@ -195,7 +195,7 @@ fn benchmark_stats_collection() {
     let mut config = default_config();
     config.dialer = Some(Box::new(move |_| {
         TcpStream::connect(&addr)
-            .map(|s| ConnectionType::Tcp(s))
+            .map(ConnectionType::Tcp)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }));
     let max_conns = 100;
