@@ -6,32 +6,49 @@
 use netconnpool::config::default_config;
 use netconnpool::*;
 use std::net::{TcpListener, TcpStream};
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// 创建一个模拟的 TCP 服务器用于测试
-fn create_test_server() -> TcpListener {
-    TcpListener::bind("127.0.0.1:0").unwrap()
-}
+/// 启动一个轻量 TCP accept 循环，避免高并发 connect 堆积在 backlog 导致阻塞
+fn setup_test_server() -> (String, Arc<AtomicBool>, thread::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = format!("{}", listener.local_addr().unwrap());
+    let _ = listener.set_nonblocking(true);
 
-/// 获取服务器的地址
-fn get_server_addr(listener: &TcpListener) -> String {
-    format!("{}", listener.local_addr().unwrap())
+    let stop = Arc::new(AtomicBool::new(false));
+    let stop2 = stop.clone();
+
+    let handle = thread::spawn(move || {
+        while !stop2.load(Ordering::Relaxed) {
+            match listener.accept() {
+                Ok((stream, _)) => drop(stream),
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    thread::sleep(Duration::from_millis(1));
+                }
+                Err(_) => thread::sleep(Duration::from_millis(1)),
+            }
+        }
+    });
+
+    (addr, stop, handle)
 }
 
 #[test]
 #[ignore] // 默认忽略，需要长时间运行
 fn test_concurrent_connections() {
-    let listener = create_test_server();
-    let addr = get_server_addr(&listener);
+    let (addr, stop, server_handle) = setup_test_server();
 
     let mut config = default_config();
-    config.dialer = Some(Box::new(move |_| {
-        TcpStream::connect(&addr)
-            .map(|s| ConnectionType::Tcp(s))
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+    config.dialer = Some(Box::new({
+        let addr = addr.clone();
+        move |_| {
+            TcpStream::connect(&addr)
+                .map(|s| ConnectionType::Tcp(s))
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+        }
     }));
     let max_conns = 100;
     config.max_connections = max_conns;
@@ -91,19 +108,24 @@ fn test_concurrent_connections() {
 
     assert!(total_success > 0, "应该有成功的操作");
     assert!(stats.total_connections_created <= max_conns as i64);
+
+    stop.store(true, Ordering::Relaxed);
+    let _ = server_handle.join();
 }
 
 #[test]
 #[ignore]
 fn test_long_running() {
-    let listener = create_test_server();
-    let addr = get_server_addr(&listener);
+    let (addr, stop, server_handle) = setup_test_server();
 
     let mut config = default_config();
-    config.dialer = Some(Box::new(move |_| {
-        TcpStream::connect(&addr)
-            .map(|s| ConnectionType::Tcp(s))
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+    config.dialer = Some(Box::new({
+        let addr = addr.clone();
+        move |_| {
+            TcpStream::connect(&addr)
+                .map(|s| ConnectionType::Tcp(s))
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+        }
     }));
     let max_conns = 50;
     config.max_connections = max_conns;
@@ -176,19 +198,24 @@ fn test_long_running() {
 
     assert!(total_ops > 0, "应该有成功的操作");
     assert!(final_stats.current_connections <= max_conns as i64);
+
+    stop.store(true, Ordering::Relaxed);
+    let _ = server_handle.join();
 }
 
 #[test]
 #[ignore]
 fn test_memory_leak() {
-    let listener = create_test_server();
-    let addr = get_server_addr(&listener);
+    let (addr, stop, server_handle) = setup_test_server();
 
     let mut config = default_config();
-    config.dialer = Some(Box::new(move |_| {
-        TcpStream::connect(&addr)
-            .map(|s| ConnectionType::Tcp(s))
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+    config.dialer = Some(Box::new({
+        let addr = addr.clone();
+        move |_| {
+            TcpStream::connect(&addr)
+                .map(|s| ConnectionType::Tcp(s))
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+        }
     }));
     let max_conns = 100;
     config.max_connections = max_conns;
@@ -226,19 +253,24 @@ fn test_memory_leak() {
         final_stats.current_connections <= 100,
         "连接数不应超过最大值"
     );
+
+    stop.store(true, Ordering::Relaxed);
+    let _ = server_handle.join();
 }
 
 #[test]
 #[ignore]
 fn test_connection_pool_exhaustion() {
-    let listener = create_test_server();
-    let addr = get_server_addr(&listener);
+    let (addr, stop, server_handle) = setup_test_server();
 
     let mut config = default_config();
-    config.dialer = Some(Box::new(move |_| {
-        TcpStream::connect(&addr)
-            .map(|s| ConnectionType::Tcp(s))
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+    config.dialer = Some(Box::new({
+        let addr = addr.clone();
+        move |_| {
+            TcpStream::connect(&addr)
+                .map(|s| ConnectionType::Tcp(s))
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+        }
     }));
     let max_conns = 10;
     config.max_connections = max_conns;
@@ -285,19 +317,24 @@ fn test_connection_pool_exhaustion() {
     println!("  最大连接数: 10");
     println!("  成功获取: {}", stats.successful_gets);
     println!("  失败获取: {}", stats.failed_gets);
+
+    stop.store(true, Ordering::Relaxed);
+    let _ = server_handle.join();
 }
 
 #[test]
 #[ignore]
 fn test_rapid_acquire_release() {
-    let listener = create_test_server();
-    let addr = get_server_addr(&listener);
+    let (addr, stop, server_handle) = setup_test_server();
 
     let mut config = default_config();
-    config.dialer = Some(Box::new(move |_| {
-        TcpStream::connect(&addr)
-            .map(|s| ConnectionType::Tcp(s))
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+    config.dialer = Some(Box::new({
+        let addr = addr.clone();
+        move |_| {
+            TcpStream::connect(&addr)
+                .map(|s| ConnectionType::Tcp(s))
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+        }
     }));
     let max_conns = 20;
     config.max_connections = max_conns;
@@ -330,6 +367,9 @@ fn test_rapid_acquire_release() {
 
     // 连接复用率应该很高
     assert!(stats.average_reuse_count > 10.0, "连接复用率应该很高");
+
+    stop.store(true, Ordering::Relaxed);
+    let _ = server_handle.join();
 }
 
 #[test]
@@ -337,14 +377,16 @@ fn test_rapid_acquire_release() {
 fn test_mixed_protocols() {
     // 这个测试需要同时支持TCP和UDP
     // 由于当前实现主要支持TCP，这里先测试TCP
-    let listener = create_test_server();
-    let addr = get_server_addr(&listener);
+    let (addr, stop, server_handle) = setup_test_server();
 
     let mut config = default_config();
-    config.dialer = Some(Box::new(move |_| {
-        TcpStream::connect(&addr)
-            .map(|s| ConnectionType::Tcp(s))
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+    config.dialer = Some(Box::new({
+        let addr = addr.clone();
+        move |_| {
+            TcpStream::connect(&addr)
+                .map(|s| ConnectionType::Tcp(s))
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+        }
     }));
     let max_conns = 50;
     config.max_connections = max_conns;
@@ -386,19 +428,24 @@ fn test_mixed_protocols() {
     println!("    当前UDP连接数: {}", stats.current_udp_connections);
 
     assert!(total > 0, "应该有成功的操作");
+
+    stop.store(true, Ordering::Relaxed);
+    let _ = server_handle.join();
 }
 
 #[test]
 #[ignore]
 fn test_connection_lifecycle() {
-    let listener = create_test_server();
-    let addr = get_server_addr(&listener);
+    let (addr, stop, server_handle) = setup_test_server();
 
     let mut config = default_config();
-    config.dialer = Some(Box::new(move |_| {
-        TcpStream::connect(&addr)
-            .map(|s| ConnectionType::Tcp(s))
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+    config.dialer = Some(Box::new({
+        let addr = addr.clone();
+        move |_| {
+            TcpStream::connect(&addr)
+                .map(|s| ConnectionType::Tcp(s))
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+        }
     }));
     let max_conns = 10;
     config.max_connections = max_conns;
@@ -440,19 +487,24 @@ fn test_connection_lifecycle() {
     println!("  关闭连接数: {}", final_stats.total_connections_closed);
 
     assert!(final_stats.total_connections_created >= initial_stats.total_connections_created);
+
+    stop.store(true, Ordering::Relaxed);
+    let _ = server_handle.join();
 }
 
 #[test]
 #[ignore]
 fn test_high_concurrency_stress() {
-    let listener = create_test_server();
-    let addr = get_server_addr(&listener);
+    let (addr, stop, server_handle) = setup_test_server();
 
     let mut config = default_config();
-    config.dialer = Some(Box::new(move |_| {
-        TcpStream::connect(&addr)
-            .map(|s| ConnectionType::Tcp(s))
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+    config.dialer = Some(Box::new({
+        let addr = addr.clone();
+        move |_| {
+            TcpStream::connect(&addr)
+                .map(|s| ConnectionType::Tcp(s))
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+        }
     }));
     let max_conns = 200;
     config.max_connections = max_conns;
@@ -515,4 +567,7 @@ fn test_high_concurrency_stress() {
 
     assert!(success_rate > 0.9, "成功率应该超过90%");
     assert!(stats.current_connections <= 200, "连接数不应超过最大值");
+
+    stop.store(true, Ordering::Relaxed);
+    let _ = server_handle.join();
 }

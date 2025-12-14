@@ -8,8 +8,15 @@ use netconnpool::*;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc as StdArc,
+};
 use std::thread;
 use std::time::{Duration, Instant};
+
+static PERF_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 /// 性能测试结果
 #[allow(dead_code)]
@@ -61,9 +68,62 @@ fn get_server_addr(listener: &TcpListener) -> String {
     format!("{}", listener.local_addr().unwrap())
 }
 
+fn spawn_echo_server(listener: TcpListener) -> (StdArc<AtomicBool>, thread::JoinHandle<()>) {
+    let stop = StdArc::new(AtomicBool::new(false));
+    let stop2 = stop.clone();
+
+    let _ = listener.set_nonblocking(true);
+
+    let handle = thread::spawn(move || {
+        while !stop2.load(Ordering::Relaxed) {
+            match listener.accept() {
+                Ok((mut stream, _)) => {
+                    let _ = stream.set_read_timeout(Some(Duration::from_millis(50)));
+                    let _ = stream.set_write_timeout(Some(Duration::from_millis(50)));
+
+                    let stop3 = stop2.clone();
+                    thread::spawn(move || {
+                        let mut buf = vec![0u8; 64 * 1024];
+                        loop {
+                            if stop3.load(Ordering::Relaxed) {
+                                let _ = stream.shutdown(std::net::Shutdown::Both);
+                                break;
+                            }
+                            match stream.read(&mut buf) {
+                                Ok(0) => break,
+                                Ok(n) => {
+                                    if stream.write_all(&buf[..n]).is_err() {
+                                        break;
+                                    }
+                                }
+                                Err(e)
+                                    if e.kind() == std::io::ErrorKind::WouldBlock
+                                        || e.kind() == std::io::ErrorKind::TimedOut =>
+                                {
+                                    continue;
+                                }
+                                Err(_) => break,
+                            }
+                        }
+                    });
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    thread::sleep(Duration::from_millis(1));
+                }
+                Err(_) => {
+                    thread::sleep(Duration::from_millis(1));
+                }
+            }
+        }
+    });
+
+    (stop, handle)
+}
+
 #[test]
 #[ignore]
 fn test_get_put_throughput() {
+    let _guard = PERF_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     // 测试获取/归还操作的吞吐量
     let listener = create_test_server();
     let addr = get_server_addr(&listener);
@@ -144,6 +204,7 @@ fn test_get_put_throughput() {
 #[test]
 #[ignore]
 fn test_concurrent_throughput() {
+    let _guard = PERF_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     // 测试并发吞吐量
     let listener = create_test_server();
     let addr = get_server_addr(&listener);
@@ -219,22 +280,13 @@ fn test_concurrent_throughput() {
 #[test]
 #[ignore]
 fn test_io_throughput() {
+    let _guard = PERF_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     // 测试IO吞吐量（通过连接进行数据传输）
     let listener = create_test_server();
     let addr = get_server_addr(&listener);
 
     // 启动服务器线程
-    let server_addr = addr.clone();
-    let server_handle = thread::spawn(move || {
-        let server = TcpListener::bind(&server_addr).unwrap();
-        for stream in server.incoming() {
-            if let Ok(mut stream) = stream {
-                let mut buf = [0u8; 1024];
-                let _ = stream.read(&mut buf);
-                let _ = stream.write_all(&buf);
-            }
-        }
-    });
+    let (stop, server_handle) = spawn_echo_server(listener);
 
     thread::sleep(Duration::from_millis(100));
 
@@ -305,12 +357,14 @@ fn test_io_throughput() {
         io_throughput / 1_000_000.0
     );
 
-    drop(server_handle);
+    stop.store(true, Ordering::Relaxed);
+    let _ = server_handle.join();
 }
 
 #[test]
 #[ignore]
 fn test_latency_distribution() {
+    let _guard = PERF_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     // 测试延迟分布
     let listener = create_test_server();
     let addr = get_server_addr(&listener);
@@ -396,6 +450,7 @@ fn test_latency_distribution() {
 #[test]
 #[ignore]
 fn test_connection_creation_speed() {
+    let _guard = PERF_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     // 测试连接创建速度
     let listener = create_test_server();
     let addr = get_server_addr(&listener);
@@ -457,22 +512,13 @@ fn test_connection_creation_speed() {
 #[test]
 #[ignore]
 fn test_high_load_io_throughput() {
+    let _guard = PERF_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     // 高负载IO吞吐量测试
     let listener = create_test_server();
     let addr = get_server_addr(&listener);
 
     // 启动高性能服务器
-    let server_addr = addr.clone();
-    let server_handle = thread::spawn(move || {
-        let server = TcpListener::bind(&server_addr).unwrap();
-        for stream in server.incoming() {
-            if let Ok(mut stream) = stream {
-                let mut buf = vec![0u8; 8192];
-                let _ = stream.read(&mut buf);
-                let _ = stream.write_all(&buf);
-            }
-        }
-    });
+    let (stop, server_handle) = spawn_echo_server(listener);
 
     thread::sleep(Duration::from_millis(100));
 
@@ -554,12 +600,14 @@ fn test_high_load_io_throughput() {
         io_throughput / 1_000_000.0
     );
 
-    drop(server_handle);
+    stop.store(true, Ordering::Relaxed);
+    let _ = server_handle.join();
 }
 
 #[test]
 #[ignore]
 fn test_stats_collection_performance() {
+    let _guard = PERF_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     // 测试统计信息收集的性能
     let listener = create_test_server();
     let addr = get_server_addr(&listener);
@@ -630,22 +678,13 @@ fn test_stats_collection_performance() {
 #[test]
 #[ignore]
 fn test_comprehensive_performance() {
+    let _guard = PERF_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     // 综合性能测试 - 模拟真实场景
     let listener = create_test_server();
     let addr = get_server_addr(&listener);
 
     // 启动服务器
-    let server_addr = addr.clone();
-    let server_handle = thread::spawn(move || {
-        let server = TcpListener::bind(&server_addr).unwrap();
-        for stream in server.incoming() {
-            if let Ok(mut stream) = stream {
-                let mut buf = [0u8; 1024];
-                let _ = stream.read(&mut buf);
-                let _ = stream.write_all(&buf);
-            }
-        }
-    });
+    let (stop, server_handle) = spawn_echo_server(listener);
 
     thread::sleep(Duration::from_millis(100));
 
@@ -755,5 +794,6 @@ fn test_comprehensive_performance() {
         stats.average_reuse_count
     );
 
-    drop(server_handle);
+    stop.store(true, Ordering::Relaxed);
+    let _ = server_handle.join();
 }
