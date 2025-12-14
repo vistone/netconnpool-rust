@@ -25,7 +25,7 @@ fn benchmark_get_put_operations() {
     let addr = get_server_addr(&listener);
     
     let mut config = default_config();
-    config.dialer = Some(Box::new(move || {
+    config.dialer = Some(Box::new(move |_| {
         TcpStream::connect(&addr)
             .map(|s| ConnectionType::Tcp(s))
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
@@ -50,7 +50,7 @@ fn benchmark_get_put_operations() {
     }
     
     let duration = start.elapsed();
-    let _stats = pool.stats();
+    let stats = pool.stats();
     
     println!("获取/归还操作基准测试:");
     println!("  迭代数: {}", iterations);
@@ -71,7 +71,7 @@ fn benchmark_concurrent_get_put() {
     let addr = get_server_addr(&listener);
     
     let mut config = default_config();
-    config.dialer = Some(Box::new(move || {
+    config.dialer = Some(Box::new(move |_| {
         TcpStream::connect(&addr)
             .map(|s| ConnectionType::Tcp(s))
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
@@ -109,7 +109,7 @@ fn benchmark_concurrent_get_put() {
     }
     
     let duration = start.elapsed();
-    let _stats = pool.stats();
+    let stats = pool.stats();
     
     println!("并发获取/归还基准测试:");
     println!("  线程数: {}", num_threads);
@@ -130,7 +130,7 @@ fn benchmark_connection_creation() {
     let addr = get_server_addr(&listener);
     
     let mut config = default_config();
-    config.dialer = Some(Box::new(move || {
+    config.dialer = Some(Box::new(move |_| {
         TcpStream::connect(&addr)
             .map(|s| ConnectionType::Tcp(s))
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
@@ -178,7 +178,7 @@ fn benchmark_stats_collection() {
     let addr = get_server_addr(&listener);
     
     let mut config = default_config();
-    config.dialer = Some(Box::new(move || {
+    config.dialer = Some(Box::new(move |_| {
         TcpStream::connect(&addr)
             .map(|s| ConnectionType::Tcp(s))
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)

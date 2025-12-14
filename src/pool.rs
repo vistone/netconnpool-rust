@@ -394,7 +394,7 @@ impl PoolInner {
         let conn_type = match self.config.mode {
             PoolMode::Client => {
                 if let Some(dialer) = &self.config.dialer {
-                    dialer().map_err(|e| NetConnPoolError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e)))?
+                    dialer(required_protocol).map_err(|e| NetConnPoolError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e)))?
                 } else {
                     return Err(NetConnPoolError::InvalidConfig);
                 }

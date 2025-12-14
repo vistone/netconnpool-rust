@@ -32,7 +32,7 @@ fn test_stats_race_condition_detailed() {
                         6 => collector.increment_total_connections_reused(),
                         _ => {
                             // 读取操作
-                            let _stats = collector.get_stats();
+                            let stats = collector.get_stats();
                         }
                     }
                 }
@@ -171,7 +171,7 @@ fn test_stats_get_stats_consistency() {
             let collector = collector.clone();
             thread::spawn(move || {
                 for _ in 0..operations_per_thread {
-                    let _stats = collector.get_stats();
+                    let stats = collector.get_stats();
                     // 验证数据一致性：当前连接数应该等于创建数减去关闭数
                     let calculated_current = stats.total_connections_created - stats.total_connections_closed;
                     // 允许小的误差（由于并发）

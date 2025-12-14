@@ -57,7 +57,7 @@ fn generate_performance_report() {
     let mut config = default_config();
     config.dialer = Some(Box::new({
         let addr = addr.clone();
-        move || {
+        move |_| {
             TcpStream::connect(&addr)
                 .map(|s| ConnectionType::Tcp(s))
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)

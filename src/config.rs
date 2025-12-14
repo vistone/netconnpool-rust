@@ -3,12 +3,14 @@
 
 use crate::errors::{NetConnPoolError, Result};
 use crate::mode::PoolMode;
+use crate::protocol::Protocol;
 use std::net::{TcpStream, UdpSocket};
 use std::time::Duration;
 
 /// Dialer 连接创建函数类型（客户端模式）
 /// 返回网络连接和错误
-pub type Dialer = Box<dyn Fn() -> std::result::Result<ConnectionType, Box<dyn std::error::Error + Send + Sync>> + Send + Sync>;
+/// 参数 Option<Protocol> 表示调用方请求的协议，Dialer 应尽量满足
+pub type Dialer = Box<dyn Fn(Option<Protocol>) -> std::result::Result<ConnectionType, Box<dyn std::error::Error + Send + Sync>> + Send + Sync>;
 
 /// Acceptor 连接接受函数类型（服务器端模式）
 /// 从Listener接受新连接，返回网络连接和错误

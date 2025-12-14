@@ -10,7 +10,7 @@ mod tests {
     #[test]
     fn test_pool_creation() {
         let mut config = default_config();
-        config.dialer = Some(Box::new(|| {
+        config.dialer = Some(Box::new(|_| {
             TcpStream::connect("127.0.0.1:8080")
                 .map(|s| ConnectionType::Tcp(s))
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
@@ -28,7 +28,7 @@ mod tests {
         // 缺少 Dialer
         assert!(config.validate().is_err());
 
-        config.dialer = Some(Box::new(|| {
+        config.dialer = Some(Box::new(|_| {
             TcpStream::connect("127.0.0.1:8080")
                 .map(|s| ConnectionType::Tcp(s))
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
@@ -51,7 +51,7 @@ mod tests {
     #[test]
     fn test_pool_close() {
         let mut config = default_config();
-        config.dialer = Some(Box::new(|| {
+        config.dialer = Some(Box::new(|_| {
             TcpStream::connect("127.0.0.1:8080")
                 .map(|s| ConnectionType::Tcp(s))
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
@@ -66,7 +66,7 @@ mod tests {
     #[test]
     fn test_stats() {
         let mut config = default_config();
-        config.dialer = Some(Box::new(|| {
+        config.dialer = Some(Box::new(|_| {
             TcpStream::connect("127.0.0.1:8080")
                 .map(|s| ConnectionType::Tcp(s))
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)

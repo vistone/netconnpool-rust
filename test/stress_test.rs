@@ -28,7 +28,7 @@ fn test_concurrent_connections() {
     let addr = get_server_addr(&listener);
     
     let mut config = default_config();
-    config.dialer = Some(Box::new(move || {
+    config.dialer = Some(Box::new(move |_| {
         TcpStream::connect(&addr)
             .map(|s| ConnectionType::Tcp(s))
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
@@ -99,7 +99,7 @@ fn test_long_running() {
     let addr = get_server_addr(&listener);
     
     let mut config = default_config();
-    config.dialer = Some(Box::new(move || {
+    config.dialer = Some(Box::new(move |_| {
         TcpStream::connect(&addr)
             .map(|s| ConnectionType::Tcp(s))
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
@@ -177,7 +177,7 @@ fn test_memory_leak() {
     let addr = get_server_addr(&listener);
     
     let mut config = default_config();
-    config.dialer = Some(Box::new(move || {
+    config.dialer = Some(Box::new(move |_| {
         TcpStream::connect(&addr)
             .map(|s| ConnectionType::Tcp(s))
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
@@ -224,7 +224,7 @@ fn test_connection_pool_exhaustion() {
     let addr = get_server_addr(&listener);
     
     let mut config = default_config();
-    config.dialer = Some(Box::new(move || {
+    config.dialer = Some(Box::new(move |_| {
         TcpStream::connect(&addr)
             .map(|s| ConnectionType::Tcp(s))
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
@@ -283,7 +283,7 @@ fn test_rapid_acquire_release() {
     let addr = get_server_addr(&listener);
     
     let mut config = default_config();
-    config.dialer = Some(Box::new(move || {
+    config.dialer = Some(Box::new(move |_| {
         TcpStream::connect(&addr)
             .map(|s| ConnectionType::Tcp(s))
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
@@ -327,7 +327,7 @@ fn test_mixed_protocols() {
     let addr = get_server_addr(&listener);
     
     let mut config = default_config();
-    config.dialer = Some(Box::new(move || {
+    config.dialer = Some(Box::new(move |_| {
         TcpStream::connect(&addr)
             .map(|s| ConnectionType::Tcp(s))
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
@@ -384,7 +384,7 @@ fn test_connection_lifecycle() {
     let addr = get_server_addr(&listener);
     
     let mut config = default_config();
-    config.dialer = Some(Box::new(move || {
+    config.dialer = Some(Box::new(move |_| {
         TcpStream::connect(&addr)
             .map(|s| ConnectionType::Tcp(s))
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
@@ -438,7 +438,7 @@ fn test_high_concurrency_stress() {
     let addr = get_server_addr(&listener);
     
     let mut config = default_config();
-    config.dialer = Some(Box::new(move || {
+    config.dialer = Some(Box::new(move |_| {
         TcpStream::connect(&addr)
             .map(|s| ConnectionType::Tcp(s))
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)

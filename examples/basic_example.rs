@@ -13,7 +13,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     config.min_connections = 2; // 预热2个连接
     
     // 设置连接创建函数
-    config.dialer = Some(Box::new(|| {
+    config.dialer = Some(Box::new(|_| {
         TcpStream::connect("127.0.0.1:8080")
             .map(|s| ConnectionType::Tcp(s))
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)

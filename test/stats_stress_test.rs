@@ -30,7 +30,7 @@ fn test_stats_concurrent_updates() {
                     collector.record_get_time(Duration::from_millis(10));
                     
                     // 同时读取统计信息
-                    let _stats = collector.get_stats();
+                    let stats = collector.get_stats();
                 }
             })
         })
@@ -75,7 +75,7 @@ fn test_stats_memory_leak() {
         
         // 频繁获取统计信息
         if i % 1000 == 0 {
-            let _stats = collector.get_stats();
+            let stats = collector.get_stats();
         }
     }
     
@@ -119,7 +119,7 @@ fn test_stats_race_condition() {
                         }
                         _ => {
                             // 读取操作
-                            let _stats = collector.get_stats();
+                            let stats = collector.get_stats();
                         }
                     }
                 }
@@ -207,7 +207,7 @@ fn test_stats_concurrent_read_write() {
             let collector = collector.clone();
             thread::spawn(move || {
                 for _ in 0..operations_per_writer {
-                    let _stats = collector.get_stats();
+                    let stats = collector.get_stats();
                     // 短暂休眠，模拟实际使用
                     thread::sleep(Duration::from_nanos(1));
                 }
@@ -357,7 +357,7 @@ fn test_stats_long_running() {
         
         // 每1000次迭代检查一次
         if iteration % 1000 == 0 {
-            let _stats = collector.get_stats();
+            let stats = collector.get_stats();
             println!("迭代 {}: 创建数={}, 获取数={}", 
                 iteration, 
                 stats.total_connections_created, 
@@ -394,7 +394,7 @@ fn test_stats_calculate_average_reuse_count() {
         collector.increment_total_connections_reused();
     }
     
-    let _stats = collector.get_stats();
+    let stats = collector.get_stats();
     println!("统计模块平均复用次数测试结果:");
     println!("  创建连接数: {}", stats.total_connections_created);
     println!("  复用次数: {}", stats.total_connections_reused);
@@ -418,7 +418,7 @@ fn test_stats_update_time_frequency() {
     }
     
     let duration = start.elapsed();
-    let _stats = collector.get_stats();
+    let stats = collector.get_stats();
     
     println!("统计模块时间更新频率测试结果:");
     println!("  操作数: 100000");

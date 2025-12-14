@@ -25,7 +25,7 @@ fn test_full_lifecycle() {
     let addr = get_server_addr(&listener);
     
     let mut config = default_config();
-    config.dialer = Some(Box::new(move || {
+    config.dialer = Some(Box::new(move |_| {
         TcpStream::connect(&addr)
             .map(|s| ConnectionType::Tcp(s))
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
@@ -125,7 +125,7 @@ fn test_error_recovery() {
     
     let mut config = default_config();
     let addr_clone = addr.clone();
-    config.dialer = Some(Box::new(move || {
+    config.dialer = Some(Box::new(move |_| {
         // 模拟偶尔的连接失败
         static mut COUNTER: u32 = 0;
         unsafe {
@@ -183,7 +183,7 @@ fn test_concurrent_pool_operations() {
     let addr = get_server_addr(&listener);
     
     let mut config = default_config();
-    config.dialer = Some(Box::new(move || {
+    config.dialer = Some(Box::new(move |_| {
         TcpStream::connect(&addr)
             .map(|s| ConnectionType::Tcp(s))
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)

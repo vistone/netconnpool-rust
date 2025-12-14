@@ -69,7 +69,7 @@ fn test_get_put_throughput() {
     let max_conns = 100;
     config.dialer = Some(Box::new({
         let addr = addr.clone();
-        move || {
+        move |_| {
             TcpStream::connect(&addr)
                 .map(|s| ConnectionType::Tcp(s))
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
@@ -143,7 +143,7 @@ fn test_concurrent_throughput() {
     let max_conns = 200;
     config.dialer = Some(Box::new({
         let addr = addr.clone();
-        move || {
+        move |_| {
             TcpStream::connect(&addr)
                 .map(|s| ConnectionType::Tcp(s))
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
@@ -230,7 +230,7 @@ fn test_io_throughput() {
     let max_conns = 50;
     config.dialer = Some(Box::new({
         let addr = addr.clone();
-        move || {
+        move |_| {
             TcpStream::connect(&addr)
                 .map(|s| ConnectionType::Tcp(s))
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
@@ -304,7 +304,7 @@ fn test_latency_distribution() {
     let max_conns = 100;
     config.dialer = Some(Box::new({
         let addr = addr.clone();
-        move || {
+        move |_| {
             TcpStream::connect(&addr)
                 .map(|s| ConnectionType::Tcp(s))
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
@@ -387,7 +387,7 @@ fn test_connection_creation_speed() {
     let max_conns = 1000;
     config.dialer = Some(Box::new({
         let addr = addr.clone();
-        move || {
+        move |_| {
             TcpStream::connect(&addr)
                 .map(|s| ConnectionType::Tcp(s))
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
@@ -457,7 +457,7 @@ fn test_high_load_io_throughput() {
     let max_conns = 100;
     config.dialer = Some(Box::new({
         let addr = addr.clone();
-        move || {
+        move |_| {
             TcpStream::connect(&addr)
                 .map(|s| ConnectionType::Tcp(s))
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
@@ -540,7 +540,7 @@ fn test_stats_collection_performance() {
     let max_conns = 100;
     config.dialer = Some(Box::new({
         let addr = addr.clone();
-        move || {
+        move |_| {
             TcpStream::connect(&addr)
                 .map(|s| ConnectionType::Tcp(s))
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
@@ -564,7 +564,7 @@ fn test_stats_collection_performance() {
     let start = Instant::now();
     for _ in 0..iterations {
         let op_start = Instant::now();
-        let _stats = pool.stats();
+        let stats = pool.stats();
         latencies.push(op_start.elapsed().as_nanos() as u64);
     }
     let duration = start.elapsed();
@@ -616,7 +616,7 @@ fn test_comprehensive_performance() {
     let max_conns = 200;
     config.dialer = Some(Box::new({
         let addr = addr.clone();
-        move || {
+        move |_| {
             TcpStream::connect(&addr)
                 .map(|s| ConnectionType::Tcp(s))
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
@@ -667,7 +667,7 @@ fn test_comprehensive_performance() {
                         }
                         _ => {
                             // 获取统计信息
-                            let _stats = pool.stats();
+                            let stats = pool.stats();
                         }
                     }
                 }
@@ -681,7 +681,7 @@ fn test_comprehensive_performance() {
     let duration = start.elapsed();
     
     let total_io = *total_io_bytes.lock().unwrap();
-    let _stats = pool.stats();
+    let stats = pool.stats();
     
     println!("\n========================================");
     println!("综合性能测试");
