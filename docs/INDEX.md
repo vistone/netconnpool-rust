@@ -27,6 +27,9 @@
 - **[CODE_REVIEW.md](CODE_REVIEW.md)** - 代码审查记录
 - **[STATS_SECURITY_AUDIT.md](STATS_SECURITY_AUDIT.md)** - 统计模块安全审计报告
 
+### 项目分析文档
+- **[COMPREHENSIVE_ANALYSIS.md](COMPREHENSIVE_ANALYSIS.md)** - 项目全面分析报告（代码质量、测试、文档、性能等）
+
 ## 🗂️ 文档结构
 
 ```
