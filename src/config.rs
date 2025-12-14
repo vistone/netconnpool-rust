@@ -190,7 +190,7 @@ impl Config {
     }
 
     /// Validate 验证配置有效性
-    pub fn validate(&mut self) -> Result<()> {
+    pub fn validate(&self) -> Result<()> {
         // 根据模式验证必需的配置
         match self.mode {
             PoolMode::Client => {
@@ -204,10 +204,6 @@ impl Config {
                 if self.listener.is_none() {
                     return Err(NetConnPoolError::InvalidConfig);
                 }
-                // 如果未提供Acceptor，使用默认的Accept方法
-                if self.acceptor.is_none() {
-                    self.acceptor = Some(Box::new(default_acceptor));
-                }
             }
         }
 
@@ -220,18 +216,23 @@ impl Config {
         if self.connection_timeout.is_zero() {
             return Err(NetConnPoolError::InvalidConfig);
         }
+        Ok(())
+    }
+
+    /// apply_defaults 应用默认值并修正不合理的配置
+    pub fn apply_defaults(&mut self) {
+        if self.mode == PoolMode::Server && self.acceptor.is_none() {
+            self.acceptor = Some(Box::new(default_acceptor));
+        }
         if self.max_idle_connections > 0 && self.max_connections > 0 && self.max_idle_connections > self.max_connections {
-            // 最大空闲连接数不应超过最大连接数
             self.max_idle_connections = self.max_connections;
         }
         if !self.health_check_interval.is_zero() && self.health_check_timeout > self.health_check_interval {
-            // 健康检查超时不应超过检查间隔
             self.health_check_timeout = self.health_check_interval / 2;
         }
         if self.max_buffer_clear_packets == 0 {
             self.max_buffer_clear_packets = 100;
         }
-        Ok(())
     }
 }
 

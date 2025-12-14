@@ -3,53 +3,43 @@
 
 use std::io::{self};
 use std::net::UdpSocket;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// clear_udp_read_buffer 清空UDP连接的读取缓冲区
 /// 这对于防止UDP连接在连接池中复用时的数据混淆非常重要
+/// 使用非阻塞模式快速清空缓冲区
 pub fn clear_udp_read_buffer(
     socket: &UdpSocket,
-    timeout: Duration,
+    _timeout: Duration,
     max_packets: usize,
 ) -> io::Result<()> {
-    let read_timeout = if timeout.is_zero() {
-        Duration::from_millis(100)
-    } else {
-        timeout
-    };
+    // 切换到非阻塞模式
+    socket.set_nonblocking(true)?;
 
-    let deadline = Instant::now() + read_timeout;
-    socket.set_read_timeout(Some(read_timeout))?;
+    let mut buf = [0u8; 65536]; // 足够大的缓冲区
+    let max = if max_packets == 0 { 100 } else { max_packets };
 
-    let mut buf = vec![0u8; 65507]; // UDP最大数据包大小
-    let max = if max_packets <= 0 { 100 } else { max_packets };
-
-    for _i in 0..max {
-        if Instant::now() > deadline {
-            return Ok(()); // 超时，缓冲区应该已清空或无法继续清空
-        }
-
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        let read_deadline = remaining.min(Duration::from_millis(50));
-        socket.set_read_timeout(Some(read_deadline))?;
-
+    for _ in 0..max {
         match socket.recv(&mut buf) {
             Ok(_) => {
-                // 成功读取到一个数据包，继续读取下一个
+                // 成功读取，继续清理
                 continue;
             }
-            Err(e) => {
-                if e.kind() == io::ErrorKind::TimedOut {
-                    return Ok(()); // 缓冲区已清空
-                }
-                if e.kind() == io::ErrorKind::UnexpectedEof {
-                    return Err(e);
-                }
-                // 其他错误（如连接关闭），返回Ok表示清理完成
-                return Ok(());
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                // 缓冲区已空
+                break;
+            }
+            Err(_) => {
+                // 其他错误（如连接重置），停止清理
+                break;
             }
         }
     }
+
+    // 恢复阻塞模式（假设默认是阻塞的，或者由调用者决定，但通常连接池中的连接默认为阻塞）
+    // 注意：如果连接原本是非阻塞的，这里会强制设为阻塞。
+    // 连接池中的连接通常期望是阻塞的。
+    socket.set_nonblocking(false)?;
 
     Ok(())
 }
@@ -57,16 +47,14 @@ pub fn clear_udp_read_buffer(
 /// has_udp_data_in_buffer 检查UDP连接读取缓冲区是否有数据
 /// 返回true表示可能有数据，false表示缓冲区为空
 pub fn has_udp_data_in_buffer(socket: &UdpSocket) -> bool {
-    socket
-        .set_read_timeout(Some(Duration::from_millis(1)))
-        .is_ok()
-        && {
-            let mut buf = [0u8; 1];
-            match socket.recv(&mut buf) {
-                Ok(_) => true,
-                Err(e) => e.kind() != io::ErrorKind::TimedOut,
-            }
-        }
+    let _ = socket.set_nonblocking(true);
+    let mut buf = [0u8; 1];
+    let has_data = match socket.peek(&mut buf) {
+        Ok(_) => true,
+        Err(_) => false,
+    };
+    let _ = socket.set_nonblocking(false);
+    has_data
 }
 
 #[cfg(test)]
@@ -77,9 +65,6 @@ mod tests {
     #[test]
     fn test_has_udp_data_in_buffer() {
         let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
-        // 空缓冲区应该返回false（超时）
-        // 注意：由于 UDP 是无连接的，这个测试可能不稳定
-        // 我们只测试函数不会 panic
         let _ = has_udp_data_in_buffer(&socket);
     }
 }

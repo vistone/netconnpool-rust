@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 use std::io::{Read, Write};
 
 /// 性能测试结果
+#[allow(dead_code)]
 struct PerformanceResult {
     test_name: String,
     operations: u64,
@@ -90,7 +91,7 @@ fn test_get_put_throughput() {
     for _ in 0..iterations {
         let op_start = Instant::now();
         if let Ok(conn) = pool.get() {
-            let _ = pool.put(conn);
+            drop(conn);
         }
         latencies.push(op_start.elapsed().as_nanos() as u64);
     }
@@ -166,7 +167,7 @@ fn test_concurrent_throughput() {
             thread::spawn(move || {
                 for _ in 0..operations_per_thread {
                     if let Ok(conn) = pool.get() {
-                        let _ = pool.put(conn);
+                        drop(conn);
                     }
                 }
             })
@@ -260,7 +261,7 @@ fn test_io_throughput() {
                     }
                 }
             }
-            let _ = pool.put(conn);
+            drop(conn);
         }
     }
     let duration = start.elapsed();
@@ -324,7 +325,7 @@ fn test_latency_distribution() {
         if let Ok(conn) = pool.get() {
             let get_time = op_start.elapsed();
             let put_start = Instant::now();
-            let _ = pool.put(conn);
+            drop(conn);
             let put_time = put_start.elapsed();
             latencies.push((get_time.as_nanos() as u64, put_time.as_nanos() as u64));
         }
@@ -406,7 +407,7 @@ fn test_connection_creation_speed() {
         let create_start = Instant::now();
         if let Ok(conn) = pool.get() {
             creation_times.push(create_start.elapsed().as_nanos() as u64);
-            let _ = pool.put(conn);
+            drop(conn);
         }
     }
     let total_duration = start.elapsed();
@@ -493,7 +494,7 @@ fn test_high_load_io_throughput() {
                                 }
                             }
                         }
-                        let _ = pool.put(conn);
+                        drop(conn);
                     }
                 }
             })
@@ -553,7 +554,7 @@ fn test_stats_collection_performance() {
     // 执行一些操作
     for _ in 0..10000 {
         if let Ok(conn) = pool.get() {
-            let _ = pool.put(conn);
+            drop(conn);
         }
     }
     
@@ -563,7 +564,7 @@ fn test_stats_collection_performance() {
     let start = Instant::now();
     for _ in 0..iterations {
         let op_start = Instant::now();
-        let stats = pool.stats();
+        let _stats = pool.stats();
         latencies.push(op_start.elapsed().as_nanos() as u64);
     }
     let duration = start.elapsed();
@@ -644,7 +645,7 @@ fn test_comprehensive_performance() {
                         0 => {
                             // 纯获取/归还
                             if let Ok(conn) = pool.get() {
-                                let _ = pool.put(conn);
+                                drop(conn);
                             }
                         }
                         1 => {
@@ -661,12 +662,12 @@ fn test_comprehensive_performance() {
                                     }
                                 }
                             }
-                                let _ = pool.put(conn);
+                                drop(conn);
                             }
                         }
                         _ => {
                             // 获取统计信息
-                            let stats = pool.stats();
+                            let _stats = pool.stats();
                         }
                     }
                 }
@@ -680,7 +681,7 @@ fn test_comprehensive_performance() {
     let duration = start.elapsed();
     
     let total_io = *total_io_bytes.lock().unwrap();
-    let stats = pool.stats();
+    let _stats = pool.stats();
     
     println!("\n========================================");
     println!("综合性能测试");

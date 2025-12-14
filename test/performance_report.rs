@@ -79,7 +79,7 @@ fn generate_performance_report() {
         if let Ok(conn) = pool.get() {
             let get_time = op_start.elapsed();
             let put_start = Instant::now();
-            let _ = pool.put(conn);
+            drop(conn);
             let put_time = put_start.elapsed();
             latencies.push((get_time.as_nanos() as u64, put_time.as_nanos() as u64));
         }
@@ -119,7 +119,7 @@ fn generate_performance_report() {
             thread::spawn(move || {
                 for _ in 0..ops_per_thread {
                     if let Ok(conn) = pool.get() {
-                        let _ = pool.put(conn);
+                        drop(conn);
                     }
                 }
             })
@@ -167,7 +167,7 @@ fn generate_performance_report() {
                                 }
                             }
                         }
-                        let _ = pool.put(conn);
+                        drop(conn);
                     }
                 }
             })
@@ -202,7 +202,7 @@ fn generate_performance_report() {
         let create_start = Instant::now();
         if let Ok(conn) = pool.get() {
             creation_times.push(create_start.elapsed().as_nanos() as u64);
-            let _ = pool.put(conn);
+            drop(conn);
         }
     }
     let create_duration = start.elapsed();
@@ -227,7 +227,7 @@ fn generate_performance_report() {
     let start = Instant::now();
     for _ in 0..stats_iterations {
         let stats_start = Instant::now();
-        let stats = pool.stats();
+        let _stats = pool.stats();
         stats_latencies.push(stats_start.elapsed().as_nanos() as u64);
     }
     let stats_duration = start.elapsed();

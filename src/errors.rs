@@ -2,9 +2,10 @@
 // All rights reserved.
 
 use thiserror::Error;
+use std::io;
 
 /// 连接池相关错误定义
-#[derive(Error, Debug, Clone, PartialEq)]
+#[derive(Error, Debug)]
 pub enum NetConnPoolError {
     #[error("连接池已关闭")]
     PoolClosed,
@@ -46,7 +47,29 @@ pub enum NetConnPoolError {
     NoConnectionForProtocol,
 
     #[error("IO错误: {0}")]
-    IoError(String),
+    IoError(#[from] io::Error),
+}
+
+impl PartialEq for NetConnPoolError {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::PoolClosed, Self::PoolClosed) => true,
+            (Self::ConnectionClosed, Self::ConnectionClosed) => true,
+            (Self::GetConnectionTimeout, Self::GetConnectionTimeout) => true,
+            (Self::MaxConnectionsReached, Self::MaxConnectionsReached) => true,
+            (Self::InvalidConnection, Self::InvalidConnection) => true,
+            (Self::ConnectionUnhealthy, Self::ConnectionUnhealthy) => true,
+            (Self::InvalidConfig, Self::InvalidConfig) => true,
+            (Self::ConnectionLeaked, Self::ConnectionLeaked) => true,
+            (Self::PoolExhausted, Self::PoolExhausted) => true,
+            (Self::UnsupportedIPVersion, Self::UnsupportedIPVersion) => true,
+            (Self::NoConnectionForIPVersion, Self::NoConnectionForIPVersion) => true,
+            (Self::UnsupportedProtocol, Self::UnsupportedProtocol) => true,
+            (Self::NoConnectionForProtocol, Self::NoConnectionForProtocol) => true,
+            (Self::IoError(e1), Self::IoError(e2)) => e1.kind() == e2.kind(),
+            _ => false,
+        }
+    }
 }
 
 /// 连接池相关错误类型别名

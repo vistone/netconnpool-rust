@@ -53,7 +53,7 @@ fn test_concurrent_connections() {
                         Ok(conn) => {
                             // 模拟使用连接
                             thread::sleep(Duration::from_millis(1));
-                            if pool.put(conn).is_ok() {
+                            drop(conn); if true {
                                 success_count += 1;
                             }
                         }
@@ -133,7 +133,7 @@ fn test_long_running() {
                             operations.fetch_add(1, Ordering::Relaxed);
                             // 模拟使用连接
                             thread::sleep(Duration::from_millis(10));
-                            if pool.put(conn).is_err() {
+                            drop(conn); if false {
                                 errors.fetch_add(1, Ordering::Relaxed);
                             }
                         }
@@ -194,7 +194,7 @@ fn test_memory_leak() {
         match pool.get() {
             Ok(conn) => {
                 // 立即归还
-                let _ = pool.put(conn);
+                drop(conn);
             }
             Err(_) => {}
         }
@@ -257,7 +257,7 @@ fn test_connection_pool_exhaustion() {
     
     // 归还一个连接
     if let Some(conn) = connections.pop() {
-        assert!(pool.put(conn).is_ok(), "应该能成功归还连接");
+        drop(conn);
         
         // 现在应该能获取到连接
         let result = pool.get();
@@ -266,7 +266,7 @@ fn test_connection_pool_exhaustion() {
     
     // 归还所有连接
     for conn in connections {
-        let _ = pool.put(conn);
+        drop(conn);
     }
     
     let stats = pool.stats();
@@ -300,7 +300,7 @@ fn test_rapid_acquire_release() {
     for _ in 0..iterations {
         if let Ok(conn) = pool.get() {
             // 立即归还，测试快速获取和释放
-            let _ = pool.put(conn);
+            drop(conn);
         }
     }
     
@@ -352,7 +352,7 @@ fn test_mixed_protocols() {
                         Ok(conn) => {
                             tcp_count += 1;
                             thread::sleep(Duration::from_millis(1));
-                            let _ = pool.put(conn);
+                            drop(conn);
                         }
                         Err(_) => {}
                     }
@@ -408,7 +408,7 @@ fn test_connection_lifecycle() {
     
     // 归还连接
     for conn in connections {
-        let _ = pool.put(conn);
+        drop(conn);
     }
     
     let initial_stats = pool.stats();
@@ -420,7 +420,7 @@ fn test_connection_lifecycle() {
     
     // 尝试获取连接，应该创建新连接
     let conn = pool.get().unwrap();
-    let _ = pool.put(conn);
+    drop(conn);
     
     let final_stats = pool.stats();
     println!("最终状态:");
@@ -463,7 +463,7 @@ fn test_high_concurrency_stress() {
                         Ok(conn) => {
                             // 模拟不同的使用时间
                             thread::sleep(Duration::from_micros(100));
-                            if pool.put(conn).is_ok() {
+                            drop(conn); if true {
                                 success += 1;
                             }
                         }

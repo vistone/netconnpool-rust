@@ -1,9 +1,10 @@
 // Copyright (c) 2025, vistone
 // All rights reserved.
 
+use crate::config::ConnectionType;
 use crate::ipversion::{detect_ip_version, IPVersion};
 use crate::protocol::Protocol;
-use std::net::{SocketAddr, TcpStream, UdpSocket};
+use std::net::{TcpStream, UdpSocket};
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -16,7 +17,7 @@ pub struct Connection {
     pub id: u64,
 
     /// Conn 底层连接对象（TCP或UDP）
-    conn: ConnectionInner,
+    conn: ConnectionType,
 
     /// Protocol 协议类型（TCP或UDP）
     pub protocol: Protocol,
@@ -39,69 +40,61 @@ pub struct Connection {
     /// InUse 是否正在使用中
     in_use: Arc<AtomicBool>,
 
-    /// LeakDetected 是否检测到泄漏
-    // leak_detected removed as unused
-
-    /// ReuseCount 连接复用次数（从连接池中获取的次数）
+    /// ReuseCount 连接复用次数
     reuse_count: Arc<AtomicI64>,
 
     /// on_close 关闭回调
     on_close: Option<Box<dyn Fn() -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync>>,
 }
 
-/// ConnectionInner 连接内部类型（TCP或UDP）
-pub enum ConnectionInner {
-    Tcp(TcpStream),
-    Udp(UdpSocket),
-}
+use std::fmt;
 
-impl ConnectionInner {
-    fn local_addr(&self) -> io::Result<SocketAddr> {
-        match self {
-            ConnectionInner::Tcp(stream) => stream.local_addr(),
-            ConnectionInner::Udp(socket) => socket.local_addr(),
-        }
-    }
-
-    fn peer_addr(&self) -> io::Result<SocketAddr> {
-        match self {
-            ConnectionInner::Tcp(stream) => stream.peer_addr(),
-            ConnectionInner::Udp(socket) => socket.peer_addr(),
-        }
+impl fmt::Debug for Connection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Connection")
+            .field("id", &self.id)
+            .field("conn", &self.conn)
+            .field("protocol", &self.protocol)
+            .field("ip_version", &self.ip_version)
+            .field("created_at", &self.created_at)
+            .field("last_used_at", &self.last_used_at)
+            .field("last_health_check_at", &self.last_health_check_at)
+            .field("is_healthy", &self.is_healthy)
+            .field("in_use", &self.in_use)
+            .field("reuse_count", &self.reuse_count)
+            .finish()
     }
 }
-
-use std::io;
 
 impl Connection {
     /// NewConnection 创建新连接
     pub fn new(
-        conn: ConnectionInner,
+        conn: ConnectionType,
         on_close: Option<Box<dyn Fn() -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync>>,
     ) -> Self {
         let now = Instant::now();
         let protocol = match &conn {
-            ConnectionInner::Tcp(_) => Protocol::TCP,
-            ConnectionInner::Udp(_) => Protocol::UDP,
+            ConnectionType::Tcp(_) => Protocol::TCP,
+            ConnectionType::Udp(_) => Protocol::UDP,
         };
 
-        let ip_version = conn
-            .peer_addr()
-            .or_else(|_| conn.local_addr())
-            .map(|addr| detect_ip_version(&addr))
-            .unwrap_or(IPVersion::Unknown);
+        let ip_version = match &conn {
+            ConnectionType::Tcp(s) => s.peer_addr().or_else(|_| s.local_addr()),
+            ConnectionType::Udp(s) => s.peer_addr().or_else(|_| s.local_addr()),
+        }
+        .map(|addr| detect_ip_version(&addr))
+        .unwrap_or(IPVersion::Unknown);
 
         Self {
             id: CONNECTION_ID_GENERATOR.fetch_add(1, Ordering::Relaxed),
             conn,
-            protocol: protocol,
-            ip_version: ip_version,
+            protocol,
+            ip_version,
             created_at: now,
             last_used_at: Arc::new(std::sync::Mutex::new(now)),
             last_health_check_at: Arc::new(std::sync::Mutex::new(now)),
             is_healthy: Arc::new(AtomicBool::new(true)),
             in_use: Arc::new(AtomicBool::new(false)),
-            // leak_detected removed
             reuse_count: Arc::new(AtomicI64::new(0)),
             on_close,
         }
@@ -112,7 +105,7 @@ impl Connection {
         stream: TcpStream,
         on_close: Option<Box<dyn Fn() -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync>>,
     ) -> Self {
-        Self::new(ConnectionInner::Tcp(stream), on_close)
+        Self::new(ConnectionType::Tcp(stream), on_close)
     }
 
     /// NewConnectionFromUdp 从UDP套接字创建连接
@@ -120,15 +113,20 @@ impl Connection {
         socket: UdpSocket,
         on_close: Option<Box<dyn Fn() -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync>>,
     ) -> Self {
-        Self::new(ConnectionInner::Udp(socket), on_close)
+        Self::new(ConnectionType::Udp(socket), on_close)
     }
 
-    /// GetProtocol 获取连接的协议类型（无锁，因为Protocol在创建后不会改变）
+    /// connection_type 获取连接类型引用
+    pub fn connection_type(&self) -> &ConnectionType {
+        &self.conn
+    }
+
+    /// GetProtocol 获取连接的协议类型
     pub fn get_protocol(&self) -> Protocol {
         self.protocol
     }
 
-    /// GetIPVersion 获取连接的IP版本（无锁，因为IPVersion在创建后不会改变）
+    /// GetIPVersion 获取连接的IP版本
     pub fn get_ip_version(&self) -> IPVersion {
         self.ip_version
     }
@@ -136,7 +134,7 @@ impl Connection {
     /// GetConn 获取底层连接对象（TCP流）
     pub fn tcp_conn(&self) -> Option<&TcpStream> {
         match &self.conn {
-            ConnectionInner::Tcp(stream) => Some(stream),
+            ConnectionType::Tcp(stream) => Some(stream),
             _ => None,
         }
     }
@@ -144,7 +142,7 @@ impl Connection {
     /// GetUdpConn 获取底层连接对象（UDP套接字）
     pub fn udp_conn(&self) -> Option<&UdpSocket> {
         match &self.conn {
-            ConnectionInner::Udp(socket) => Some(socket),
+            ConnectionType::Udp(socket) => Some(socket),
             _ => None,
         }
     }
@@ -175,8 +173,8 @@ impl Connection {
         Instant::now().duration_since(self.created_at) > max_lifetime
     }
 
-    /// IsIdleTooLong 检查连接是否空闲太久（超过IdleTimeout）
-    pub fn is_idle_too_long(&self, idle_timeout: Duration) -> bool {
+    /// IsIdleExpired 检查连接是否空闲太久（超过IdleTimeout）
+    pub fn is_idle_expired(&self, idle_timeout: Duration) -> bool {
         if idle_timeout.is_zero() {
             return false;
         }

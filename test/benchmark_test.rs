@@ -45,12 +45,12 @@ fn benchmark_get_put_operations() {
     
     for _ in 0..iterations {
         if let Ok(conn) = pool.get() {
-            let _ = pool.put(conn);
+            drop(conn);
         }
     }
     
     let duration = start.elapsed();
-    let stats = pool.stats();
+    let _stats = pool.stats();
     
     println!("获取/归还操作基准测试:");
     println!("  迭代数: {}", iterations);
@@ -97,7 +97,7 @@ fn benchmark_concurrent_get_put() {
             thread::spawn(move || {
                 for _ in 0..operations_per_thread {
                     if let Ok(conn) = pool.get() {
-                        let _ = pool.put(conn);
+                        drop(conn);
                     }
                 }
             })
@@ -109,7 +109,7 @@ fn benchmark_concurrent_get_put() {
     }
     
     let duration = start.elapsed();
-    let stats = pool.stats();
+    let _stats = pool.stats();
     
     println!("并发获取/归还基准测试:");
     println!("  线程数: {}", num_threads);
@@ -156,10 +156,10 @@ fn benchmark_connection_creation() {
     
     // 归还所有连接
     for conn in connections {
-        let _ = pool.put(conn);
+        drop(conn);
     }
     
-    let stats = pool.stats();
+    let _stats = pool.stats();
     
     println!("连接创建基准测试:");
     println!("  创建连接数: {}", num_connections);
@@ -193,7 +193,7 @@ fn benchmark_stats_collection() {
     // 执行一些操作
     for _ in 0..1000 {
         if let Ok(conn) = pool.get() {
-            let _ = pool.put(conn);
+            drop(conn);
         }
     }
     

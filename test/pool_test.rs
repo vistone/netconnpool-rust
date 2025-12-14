@@ -26,14 +26,14 @@ mod tests {
     fn test_config_validation() {
         let mut config = default_config();
         // 缺少 Dialer
-        assert!(config.validate()().is_err());
+        assert!(config.validate().is_err());
 
         config.dialer = Some(Box::new(|| {
             TcpStream::connect("127.0.0.1:8080")
                 .map(|s| ConnectionType::Tcp(s))
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }));
-        assert!(config.validate()().is_ok());
+        assert!(config.validate().is_ok());
     }
 
     #[test]

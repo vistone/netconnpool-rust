@@ -60,7 +60,7 @@ fn test_full_lifecycle() {
                 for _ in 0..operations_per_thread {
                     if let Ok(conn) = pool.get() {
                         thread::sleep(Duration::from_millis(5));
-                        let _ = pool.put(conn);
+                        drop(conn);
                     }
                 }
             })
@@ -87,7 +87,7 @@ fn test_full_lifecycle() {
                 for _ in 0..high_load_ops {
                     if let Ok(conn) = pool.get() {
                         thread::sleep(Duration::from_millis(1));
-                        let _ = pool.put(conn);
+                        drop(conn);
                     }
                 }
             })
@@ -157,7 +157,7 @@ fn test_error_recovery() {
             Ok(conn) => {
                 success_count += 1;
                 thread::sleep(Duration::from_millis(1));
-                let _ = pool.put(conn);
+                drop(conn);
             }
             Err(_) => {
                 error_count += 1;
@@ -206,7 +206,7 @@ fn test_concurrent_pool_operations() {
                         // 线程组1: 获取和归还
                         for _ in 0..50 {
                             if let Ok(conn) = pool.get() {
-                                let _ = pool.put(conn);
+                                drop(conn);
                             }
                         }
                     }
@@ -214,7 +214,7 @@ fn test_concurrent_pool_operations() {
                         // 线程组2: 只获取TCP连接
                         for _ in 0..50 {
                             if let Ok(conn) = pool.get_tcp() {
-                                let _ = pool.put(conn);
+                                drop(conn);
                             }
                         }
                     }
@@ -222,7 +222,7 @@ fn test_concurrent_pool_operations() {
                         // 线程组3: 获取IPv4连接
                         for _ in 0..50 {
                             if let Ok(conn) = pool.get_ipv4() {
-                                let _ = pool.put(conn);
+                                drop(conn);
                             }
                         }
                     }

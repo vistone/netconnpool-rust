@@ -30,8 +30,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         println!("获取到TCP连接: {:?}", tcp_stream.peer_addr());
     }
     
-    // 归还连接
-    pool.put(conn)?;
+    // 归还连接 (RAII 自动归还)
+    drop(conn);
     
     // 关闭连接池
     pool.close()?;
