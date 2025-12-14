@@ -49,10 +49,7 @@ pub fn clear_udp_read_buffer(
 pub fn has_udp_data_in_buffer(socket: &UdpSocket) -> bool {
     let _ = socket.set_nonblocking(true);
     let mut buf = [0u8; 1];
-    let has_data = match socket.peek(&mut buf) {
-        Ok(_) => true,
-        Err(_) => false,
-    };
+    let has_data = socket.peek(&mut buf).is_ok();
     let _ = socket.set_nonblocking(false);
     has_data
 }

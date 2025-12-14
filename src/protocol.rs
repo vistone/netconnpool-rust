@@ -4,20 +4,15 @@
 use std::net::{TcpStream, UdpSocket};
 
 /// Protocol 协议类型
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Protocol {
     /// ProtocolUnknown 未知协议
+    #[default]
     Unknown = 0,
     /// ProtocolTCP TCP协议
     TCP = 1,
     /// ProtocolUDP UDP协议
     UDP = 2,
-}
-
-impl Default for Protocol {
-    fn default() -> Self {
-        Protocol::Unknown
-    }
 }
 
 impl std::fmt::Display for Protocol {

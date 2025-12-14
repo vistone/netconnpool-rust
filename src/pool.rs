@@ -96,7 +96,7 @@ impl Pool {
         };
 
         let inner = Arc::new(PoolInner {
-            config: config,
+            config,
             all_connections: RwLock::new(HashMap::new()),
             idle_connections: [
                 Mutex::new(Vec::new()),
@@ -115,7 +115,7 @@ impl Pool {
             .spawn(move || {
                 Self::reaper(weak_inner);
             })
-            .map_err(|e| NetConnPoolError::IoError(e))?;
+            .map_err(NetConnPoolError::IoError)?;
 
         // 启动预热线程（min_connections）
         // 仅客户端模式预热；服务器模式预热可能会阻塞在 accept 上。
@@ -364,11 +364,12 @@ impl PoolInner {
 
         // 获取所有连接并关闭
         let conns: Vec<Arc<Connection>> = {
-            let connections = self.all_connections.read()
-                .map_err(|e| NetConnPoolError::IoError(std::io::Error::new(
+            let connections = self.all_connections.read().map_err(|e| {
+                NetConnPoolError::IoError(std::io::Error::new(
                     std::io::ErrorKind::Other,
-                    format!("获取连接列表失败: {}", e)
-                )))?;
+                    format!("获取连接列表失败: {}", e),
+                ))
+            })?;
             connections.values().cloned().collect()
         };
 
@@ -474,11 +475,12 @@ impl PoolInner {
             // 1. 尝试从空闲池获取
             for &idx in &bucket_indices {
                 let conn = {
-                    let mut idle = self.idle_connections[idx].lock()
-                        .map_err(|e| NetConnPoolError::IoError(std::io::Error::new(
+                    let mut idle = self.idle_connections[idx].lock().map_err(|e| {
+                        NetConnPoolError::IoError(std::io::Error::new(
                             std::io::ErrorKind::Other,
-                            format!("获取空闲连接池锁失败: {}", e)
-                        )))?;
+                            format!("获取空闲连接池锁失败: {}", e),
+                        ))
+                    })?;
                     idle.pop()
                 };
 
@@ -497,7 +499,7 @@ impl PoolInner {
                     conn.increment_reuse_count();
 
                     if let Some(on_borrow) = &self.config.on_borrow {
-                        on_borrow(&conn.connection_type());
+                        on_borrow(conn.connection_type());
                     }
 
                     if let Some(stats) = &self.stats_collector {
@@ -510,11 +512,16 @@ impl PoolInner {
 
             // 2. 检查最大连接数
             if self.config.max_connections > 0 {
-                let current = self.all_connections.read()
-                    .map_err(|e| NetConnPoolError::IoError(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("读取连接数失败: {}", e)
-                    )))?.len();
+                let current = self
+                    .all_connections
+                    .read()
+                    .map_err(|e| {
+                        NetConnPoolError::IoError(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("读取连接数失败: {}", e),
+                        ))
+                    })?
+                    .len();
                 if current >= self.config.max_connections {
                     if let Some(stats) = &self.stats_collector {
                         stats.increment_failed_gets();
@@ -533,7 +540,7 @@ impl PoolInner {
                     conn.mark_in_use();
 
                     if let Some(on_borrow) = &self.config.on_borrow {
-                        on_borrow(&conn.connection_type());
+                        on_borrow(conn.connection_type());
                     }
 
                     if let Some(stats) = &self.stats_collector {
@@ -573,11 +580,16 @@ impl PoolInner {
 
         // Check count first
         if self.config.max_connections > 0 {
-            let current = self.all_connections.read()
-                .map_err(|e| NetConnPoolError::IoError(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("读取连接数失败: {}", e)
-                )))?.len();
+            let current = self
+                .all_connections
+                .read()
+                .map_err(|e| {
+                    NetConnPoolError::IoError(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("读取连接数失败: {}", e),
+                    ))
+                })?
+                .len();
             if current >= self.config.max_connections {
                 return Err(NetConnPoolError::MaxConnectionsReached {
                     current,
@@ -600,10 +612,11 @@ impl PoolInner {
             }
             PoolMode::Server => {
                 if let Some(listener) = &self.config.listener {
-                    let acceptor = self.config.acceptor.as_ref()
-                        .ok_or_else(|| NetConnPoolError::InvalidConfig {
+                    let acceptor = self.config.acceptor.as_ref().ok_or_else(|| {
+                        NetConnPoolError::InvalidConfig {
                             reason: "服务器模式需要 Acceptor".to_string(),
-                        })?;
+                        }
+                    })?;
                     ConnectionType::Tcp(acceptor(listener).map_err(|e| {
                         NetConnPoolError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e))
                     })?)
@@ -665,11 +678,12 @@ impl PoolInner {
 
         // Insert into map
         {
-            let mut connections = self.all_connections.write()
-                .map_err(|e| NetConnPoolError::IoError(std::io::Error::new(
+            let mut connections = self.all_connections.write().map_err(|e| {
+                NetConnPoolError::IoError(std::io::Error::new(
                     std::io::ErrorKind::Other,
-                    format!("获取连接映射写锁失败: {}", e)
-                )))?;
+                    format!("获取连接映射写锁失败: {}", e),
+                ))
+            })?;
             let current = connections.len();
             if self.config.max_connections > 0 && current >= self.config.max_connections {
                 self.close_connection(&conn);
@@ -718,7 +732,7 @@ impl PoolInner {
         }
 
         if let Some(on_return) = &self.config.on_return {
-            on_return(&conn.connection_type());
+            on_return(conn.connection_type());
         }
 
         // UDP Buffer cleanup
@@ -774,11 +788,12 @@ impl PoolInner {
         self.close_connection(conn);
 
         {
-            let mut connections = self.all_connections.write()
-                .map_err(|e| NetConnPoolError::IoError(std::io::Error::new(
+            let mut connections = self.all_connections.write().map_err(|e| {
+                NetConnPoolError::IoError(std::io::Error::new(
                     std::io::ErrorKind::Other,
-                    format!("获取连接映射写锁失败: {}", e)
-                )))?;
+                    format!("获取连接映射写锁失败: {}", e),
+                ))
+            })?;
             connections.remove(&conn.id);
         }
 

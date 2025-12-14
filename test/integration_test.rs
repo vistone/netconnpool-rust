@@ -27,7 +27,7 @@ fn test_full_lifecycle() {
     let mut config = default_config();
     config.dialer = Some(Box::new(move |_| {
         TcpStream::connect(&addr)
-            .map(|s| ConnectionType::Tcp(s))
+            .map(ConnectionType::Tcp)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }));
     let max_conns = 50;
@@ -143,7 +143,7 @@ fn test_error_recovery() {
             }
         }
         TcpStream::connect(&addr_clone)
-            .map(|s| ConnectionType::Tcp(s))
+            .map(ConnectionType::Tcp)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }));
     let max_conns = 20;
@@ -189,7 +189,7 @@ fn test_concurrent_pool_operations() {
     let mut config = default_config();
     config.dialer = Some(Box::new(move |_| {
         TcpStream::connect(&addr)
-            .map(|s| ConnectionType::Tcp(s))
+            .map(ConnectionType::Tcp)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }));
     let max_conns = 100;

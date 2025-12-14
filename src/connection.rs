@@ -11,6 +11,10 @@ use std::time::{Duration, Instant};
 
 static CONNECTION_ID_GENERATOR: AtomicU64 = AtomicU64::new(1);
 
+/// on_close 关闭回调类型
+pub type OnCloseCallback =
+    dyn Fn() -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync;
+
 /// Connection 连接封装
 pub struct Connection {
     /// ID 连接唯一标识符
@@ -50,13 +54,7 @@ pub struct Connection {
     leak_reported: Arc<AtomicBool>,
 
     /// on_close 关闭回调
-    on_close: Option<
-        Box<
-            dyn Fn() -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>
-                + Send
-                + Sync,
-        >,
-    >,
+    on_close: Option<Box<OnCloseCallback>>,
 }
 
 use std::fmt;
@@ -80,16 +78,7 @@ impl fmt::Debug for Connection {
 
 impl Connection {
     /// NewConnection 创建新连接
-    pub fn new(
-        conn: ConnectionType,
-        on_close: Option<
-            Box<
-                dyn Fn() -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>
-                    + Send
-                    + Sync,
-            >,
-        >,
-    ) -> Self {
+    pub fn new(conn: ConnectionType, on_close: Option<Box<OnCloseCallback>>) -> Self {
         let now = Instant::now();
         let protocol = match &conn {
             ConnectionType::Tcp(_) => Protocol::TCP,
@@ -121,30 +110,12 @@ impl Connection {
     }
 
     /// NewConnectionFromTcp 从TCP流创建连接
-    pub fn new_from_tcp(
-        stream: TcpStream,
-        on_close: Option<
-            Box<
-                dyn Fn() -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>
-                    + Send
-                    + Sync,
-            >,
-        >,
-    ) -> Self {
+    pub fn new_from_tcp(stream: TcpStream, on_close: Option<Box<OnCloseCallback>>) -> Self {
         Self::new(ConnectionType::Tcp(stream), on_close)
     }
 
     /// NewConnectionFromUdp 从UDP套接字创建连接
-    pub fn new_from_udp(
-        socket: UdpSocket,
-        on_close: Option<
-            Box<
-                dyn Fn() -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>
-                    + Send
-                    + Sync,
-            >,
-        >,
-    ) -> Self {
+    pub fn new_from_udp(socket: UdpSocket, on_close: Option<Box<OnCloseCallback>>) -> Self {
         Self::new(ConnectionType::Udp(socket), on_close)
     }
 

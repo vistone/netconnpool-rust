@@ -4,20 +4,15 @@
 use std::net::SocketAddr;
 
 /// IPVersion IP版本类型
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IPVersion {
     /// IPVersionUnknown 未知IP版本
+    #[default]
     Unknown = 0,
     /// IPVersionIPv4 IPv4
     IPv4 = 1,
     /// IPVersionIPv6 IPv6
     IPv6 = 2,
-}
-
-impl Default for IPVersion {
-    fn default() -> Self {
-        IPVersion::Unknown
-    }
 }
 
 impl std::fmt::Display for IPVersion {

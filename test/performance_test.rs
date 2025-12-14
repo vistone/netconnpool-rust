@@ -134,7 +134,7 @@ fn test_get_put_throughput() {
         let addr = addr.clone();
         move |_| {
             TcpStream::connect(&addr)
-                .map(|s| ConnectionType::Tcp(s))
+                .map(ConnectionType::Tcp)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }
     }));
@@ -215,7 +215,7 @@ fn test_concurrent_throughput() {
         let addr = addr.clone();
         move |_| {
             TcpStream::connect(&addr)
-                .map(|s| ConnectionType::Tcp(s))
+                .map(ConnectionType::Tcp)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }
     }));
@@ -296,7 +296,7 @@ fn test_io_throughput() {
         let addr = addr.clone();
         move |_| {
             TcpStream::connect(&addr)
-                .map(|s| ConnectionType::Tcp(s))
+                .map(ConnectionType::Tcp)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }
     }));
@@ -375,7 +375,7 @@ fn test_latency_distribution() {
         let addr = addr.clone();
         move |_| {
             TcpStream::connect(&addr)
-                .map(|s| ConnectionType::Tcp(s))
+                .map(ConnectionType::Tcp)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }
     }));
@@ -461,7 +461,7 @@ fn test_connection_creation_speed() {
         let addr = addr.clone();
         move |_| {
             TcpStream::connect(&addr)
-                .map(|s| ConnectionType::Tcp(s))
+                .map(ConnectionType::Tcp)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }
     }));
@@ -528,7 +528,7 @@ fn test_high_load_io_throughput() {
         let addr = addr.clone();
         move |_| {
             TcpStream::connect(&addr)
-                .map(|s| ConnectionType::Tcp(s))
+                .map(ConnectionType::Tcp)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }
     }));
@@ -618,7 +618,7 @@ fn test_stats_collection_performance() {
         let addr = addr.clone();
         move |_| {
             TcpStream::connect(&addr)
-                .map(|s| ConnectionType::Tcp(s))
+                .map(ConnectionType::Tcp)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }
     }));
@@ -694,7 +694,7 @@ fn test_comprehensive_performance() {
         let addr = addr.clone();
         move |_| {
             TcpStream::connect(&addr)
-                .map(|s| ConnectionType::Tcp(s))
+                .map(ConnectionType::Tcp)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }
     }));
