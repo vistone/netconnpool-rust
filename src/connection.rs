@@ -37,14 +37,26 @@ pub struct Connection {
     /// IsHealthy 是否健康
     is_healthy: Arc<AtomicBool>,
 
+    /// Closed 是否已关闭（用于 close 幂等）
+    closed: Arc<AtomicBool>,
+
     /// InUse 是否正在使用中
     in_use: Arc<AtomicBool>,
 
     /// ReuseCount 连接复用次数
     reuse_count: Arc<AtomicI64>,
 
+    /// leak_reported 是否已上报过泄漏（避免重复计数）
+    leak_reported: Arc<AtomicBool>,
+
     /// on_close 关闭回调
-    on_close: Option<Box<dyn Fn() -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync>>,
+    on_close: Option<
+        Box<
+            dyn Fn() -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>
+                + Send
+                + Sync,
+        >,
+    >,
 }
 
 use std::fmt;
@@ -70,7 +82,13 @@ impl Connection {
     /// NewConnection 创建新连接
     pub fn new(
         conn: ConnectionType,
-        on_close: Option<Box<dyn Fn() -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync>>,
+        on_close: Option<
+            Box<
+                dyn Fn() -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>
+                    + Send
+                    + Sync,
+            >,
+        >,
     ) -> Self {
         let now = Instant::now();
         let protocol = match &conn {
@@ -94,8 +112,10 @@ impl Connection {
             last_used_at: Arc::new(std::sync::Mutex::new(now)),
             last_health_check_at: Arc::new(std::sync::Mutex::new(now)),
             is_healthy: Arc::new(AtomicBool::new(true)),
+            closed: Arc::new(AtomicBool::new(false)),
             in_use: Arc::new(AtomicBool::new(false)),
             reuse_count: Arc::new(AtomicI64::new(0)),
+            leak_reported: Arc::new(AtomicBool::new(false)),
             on_close,
         }
     }
@@ -103,7 +123,13 @@ impl Connection {
     /// NewConnectionFromTcp 从TCP流创建连接
     pub fn new_from_tcp(
         stream: TcpStream,
-        on_close: Option<Box<dyn Fn() -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync>>,
+        on_close: Option<
+            Box<
+                dyn Fn() -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>
+                    + Send
+                    + Sync,
+            >,
+        >,
     ) -> Self {
         Self::new(ConnectionType::Tcp(stream), on_close)
     }
@@ -111,7 +137,13 @@ impl Connection {
     /// NewConnectionFromUdp 从UDP套接字创建连接
     pub fn new_from_udp(
         socket: UdpSocket,
-        on_close: Option<Box<dyn Fn() -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync>>,
+        on_close: Option<
+            Box<
+                dyn Fn() -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>
+                    + Send
+                    + Sync,
+            >,
+        >,
     ) -> Self {
         Self::new(ConnectionType::Udp(socket), on_close)
     }
@@ -165,6 +197,25 @@ impl Connection {
         *self.last_health_check_at.lock().unwrap() = Instant::now();
     }
 
+    /// mark_unhealthy 仅标记为不健康（不主动关闭）
+    pub fn mark_unhealthy(&self) {
+        self.is_healthy.store(false, Ordering::Release);
+    }
+
+    /// should_health_check 判断是否需要执行健康检查
+    pub fn should_health_check(&self, interval: Duration) -> bool {
+        if interval.is_zero() {
+            return false;
+        }
+        let last = *self.last_health_check_at.lock().unwrap();
+        Instant::now().duration_since(last) >= interval
+    }
+
+    /// report_leak_once 返回是否是首次上报泄漏
+    pub fn report_leak_once(&self) -> bool {
+        !self.leak_reported.swap(true, Ordering::AcqRel)
+    }
+
     /// IsExpired 检查连接是否过期（超过MaxLifetime）
     pub fn is_expired(&self, max_lifetime: Duration) -> bool {
         if max_lifetime.is_zero() {
@@ -196,9 +247,25 @@ impl Connection {
 
     /// Close 关闭连接
     pub fn close(&self) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        if self.closed.swap(true, Ordering::AcqRel) {
+            return Ok(());
+        }
+
         if let Some(on_close) = &self.on_close {
             on_close()?;
+            self.is_healthy.store(false, Ordering::Release);
+            return Ok(());
         }
+
+        // 默认关闭策略：TCP 做 shutdown；UDP 无显式 close（drop 时关闭）
+        match &self.conn {
+            ConnectionType::Tcp(stream) => {
+                let _ = stream.shutdown(std::net::Shutdown::Both);
+            }
+            ConnectionType::Udp(_) => {}
+        }
+
+        self.is_healthy.store(false, Ordering::Release);
         Ok(())
     }
 
@@ -234,5 +301,10 @@ impl Connection {
     /// GetHealthStatus 获取连接健康状态（线程安全）
     pub fn health_status(&self) -> bool {
         self.is_healthy.load(Ordering::Acquire)
+    }
+
+    /// is_closed 查询是否已关闭
+    pub fn is_closed(&self) -> bool {
+        self.closed.load(Ordering::Acquire)
     }
 }

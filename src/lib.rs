@@ -38,11 +38,11 @@ pub mod protocol;
 pub mod stats;
 pub mod udp_utils;
 
-pub use config::{Config, ConnectionType};
 pub use config::{default_config, default_server_config};
+pub use config::{Config, ConnectionType};
 pub use connection::Connection;
 pub use errors::*;
-pub use ipversion::{detect_ip_version, IPVersion, parse_ip_version};
+pub use ipversion::{detect_ip_version, parse_ip_version, IPVersion};
 pub use mode::{parse_pool_mode, PoolMode};
 pub use pool::Pool;
 pub use protocol::{detect_protocol, parse_protocol, Protocol};

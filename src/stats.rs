@@ -137,7 +137,7 @@ struct StatsInternal {
     leaked_connections: AtomicI64,
     total_connections_reused: AtomicI64,
     average_get_time: AtomicU64, // Duration as nanoseconds
-    total_get_time: AtomicU64,     // Duration as nanoseconds
+    total_get_time: AtomicU64,   // Duration as nanoseconds
 }
 
 impl StatsCollector {
@@ -177,33 +177,47 @@ impl StatsCollector {
 
     /// IncrementTotalConnectionsCreated 增加创建连接计数
     pub fn increment_total_connections_created(&self) {
-        self.stats.total_connections_created.fetch_add(1, Ordering::Relaxed);
-        self.stats.current_connections.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .total_connections_created
+            .fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .current_connections
+            .fetch_add(1, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementTotalConnectionsClosed 增加关闭连接计数
     pub fn increment_total_connections_closed(&self) {
-        self.stats.total_connections_closed.fetch_add(1, Ordering::Relaxed);
-        self.stats.current_connections.fetch_sub(1, Ordering::Relaxed);
+        self.stats
+            .total_connections_closed
+            .fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .current_connections
+            .fetch_sub(1, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementCurrentIdleConnections 增加空闲连接计数
     pub fn increment_current_idle_connections(&self, delta: i64) {
-        self.stats.current_idle_connections.fetch_add(delta, Ordering::Relaxed);
+        self.stats
+            .current_idle_connections
+            .fetch_add(delta, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementCurrentActiveConnections 增加活跃连接计数
     pub fn increment_current_active_connections(&self, delta: i64) {
-        self.stats.current_active_connections.fetch_add(delta, Ordering::Relaxed);
+        self.stats
+            .current_active_connections
+            .fetch_add(delta, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementTotalGetRequests 增加获取请求计数
     pub fn increment_total_get_requests(&self) {
-        self.stats.total_get_requests.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .total_get_requests
+            .fetch_add(1, Ordering::Relaxed);
         self.update_time();
     }
 
@@ -227,19 +241,25 @@ impl StatsCollector {
 
     /// IncrementHealthCheckAttempts 增加健康检查尝试计数
     pub fn increment_health_check_attempts(&self) {
-        self.stats.health_check_attempts.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .health_check_attempts
+            .fetch_add(1, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementHealthCheckFailures 增加健康检查失败计数
     pub fn increment_health_check_failures(&self) {
-        self.stats.health_check_failures.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .health_check_failures
+            .fetch_add(1, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementUnhealthyConnections 增加不健康连接计数
     pub fn increment_unhealthy_connections(&self) {
-        self.stats.unhealthy_connections.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .unhealthy_connections
+            .fetch_add(1, Ordering::Relaxed);
         self.update_time();
     }
 
@@ -251,14 +271,18 @@ impl StatsCollector {
 
     /// IncrementLeakedConnections 增加泄漏连接计数
     pub fn increment_leaked_connections(&self) {
-        self.stats.leaked_connections.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .leaked_connections
+            .fetch_add(1, Ordering::Relaxed);
         self.update_time();
     }
 
     /// RecordGetTime 记录获取连接的时间
     pub fn record_get_time(&self, duration: Duration) {
         let nanos = duration.as_nanos() as u64;
-        self.stats.total_get_time.fetch_add(nanos, Ordering::Relaxed);
+        self.stats
+            .total_get_time
+            .fetch_add(nanos, Ordering::Relaxed);
 
         // 计算平均时间（使用重试机制避免竞争条件，最多重试3次）
         let max_retries = 3;
@@ -272,7 +296,9 @@ impl StatsCollector {
                     // 值稳定，可以安全计算平均值
                     if total_gets2 > 0 {
                         let avg_time = total_time / total_gets2 as u64;
-                        self.stats.average_get_time.store(avg_time, Ordering::Release);
+                        self.stats
+                            .average_get_time
+                            .store(avg_time, Ordering::Release);
                     }
                     break;
                 }
@@ -284,7 +310,9 @@ impl StatsCollector {
                 if total_gets2 > 0 {
                     let total_time2 = self.stats.total_get_time.load(Ordering::Acquire);
                     let avg_time = total_time2 / total_gets2 as u64;
-                    self.stats.average_get_time.store(avg_time, Ordering::Release);
+                    self.stats
+                        .average_get_time
+                        .store(avg_time, Ordering::Release);
                 }
                 break;
             } else {
@@ -310,15 +338,30 @@ impl StatsCollector {
             total_connections_closed: self.stats.total_connections_closed.load(Ordering::Relaxed),
             current_connections: self.stats.current_connections.load(Ordering::Relaxed),
             current_idle_connections: self.stats.current_idle_connections.load(Ordering::Relaxed),
-            current_active_connections: self.stats.current_active_connections.load(Ordering::Relaxed),
+            current_active_connections: self
+                .stats
+                .current_active_connections
+                .load(Ordering::Relaxed),
             current_ipv4_connections: self.stats.current_ipv4_connections.load(Ordering::Relaxed),
             current_ipv6_connections: self.stats.current_ipv6_connections.load(Ordering::Relaxed),
-            current_ipv4_idle_connections: self.stats.current_ipv4_idle_connections.load(Ordering::Relaxed),
-            current_ipv6_idle_connections: self.stats.current_ipv6_idle_connections.load(Ordering::Relaxed),
+            current_ipv4_idle_connections: self
+                .stats
+                .current_ipv4_idle_connections
+                .load(Ordering::Relaxed),
+            current_ipv6_idle_connections: self
+                .stats
+                .current_ipv6_idle_connections
+                .load(Ordering::Relaxed),
             current_tcp_connections: self.stats.current_tcp_connections.load(Ordering::Relaxed),
             current_udp_connections: self.stats.current_udp_connections.load(Ordering::Relaxed),
-            current_tcp_idle_connections: self.stats.current_tcp_idle_connections.load(Ordering::Relaxed),
-            current_udp_idle_connections: self.stats.current_udp_idle_connections.load(Ordering::Relaxed),
+            current_tcp_idle_connections: self
+                .stats
+                .current_tcp_idle_connections
+                .load(Ordering::Relaxed),
+            current_udp_idle_connections: self
+                .stats
+                .current_udp_idle_connections
+                .load(Ordering::Relaxed),
             total_get_requests: self.stats.total_get_requests.load(Ordering::Relaxed),
             successful_gets: self.stats.successful_gets.load(Ordering::Relaxed),
             failed_gets: self.stats.failed_gets.load(Ordering::Relaxed),
@@ -333,64 +376,80 @@ impl StatsCollector {
             average_get_time: Duration::from_nanos(
                 self.stats.average_get_time.load(Ordering::Relaxed),
             ),
-            total_get_time: Duration::from_nanos(
-                self.stats.total_get_time.load(Ordering::Relaxed),
-            ),
+            total_get_time: Duration::from_nanos(self.stats.total_get_time.load(Ordering::Relaxed)),
             last_update_time: *self.last_update_time.read().unwrap(),
         }
     }
 
     /// IncrementCurrentIPv4Connections 增加IPv4连接计数
     pub fn increment_current_ipv4_connections(&self, delta: i64) {
-        self.stats.current_ipv4_connections.fetch_add(delta, Ordering::Relaxed);
+        self.stats
+            .current_ipv4_connections
+            .fetch_add(delta, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementCurrentIPv6Connections 增加IPv6连接计数
     pub fn increment_current_ipv6_connections(&self, delta: i64) {
-        self.stats.current_ipv6_connections.fetch_add(delta, Ordering::Relaxed);
+        self.stats
+            .current_ipv6_connections
+            .fetch_add(delta, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementCurrentIPv4IdleConnections 增加IPv4空闲连接计数
     pub fn increment_current_ipv4_idle_connections(&self, delta: i64) {
-        self.stats.current_ipv4_idle_connections.fetch_add(delta, Ordering::Relaxed);
+        self.stats
+            .current_ipv4_idle_connections
+            .fetch_add(delta, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementCurrentIPv6IdleConnections 增加IPv6空闲连接计数
     pub fn increment_current_ipv6_idle_connections(&self, delta: i64) {
-        self.stats.current_ipv6_idle_connections.fetch_add(delta, Ordering::Relaxed);
+        self.stats
+            .current_ipv6_idle_connections
+            .fetch_add(delta, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementCurrentTCPConnections 增加TCP连接计数
     pub fn increment_current_tcp_connections(&self, delta: i64) {
-        self.stats.current_tcp_connections.fetch_add(delta, Ordering::Relaxed);
+        self.stats
+            .current_tcp_connections
+            .fetch_add(delta, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementCurrentUDPConnections 增加UDP连接计数
     pub fn increment_current_udp_connections(&self, delta: i64) {
-        self.stats.current_udp_connections.fetch_add(delta, Ordering::Relaxed);
+        self.stats
+            .current_udp_connections
+            .fetch_add(delta, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementCurrentTCPIdleConnections 增加TCP空闲连接计数
     pub fn increment_current_tcp_idle_connections(&self, delta: i64) {
-        self.stats.current_tcp_idle_connections.fetch_add(delta, Ordering::Relaxed);
+        self.stats
+            .current_tcp_idle_connections
+            .fetch_add(delta, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementCurrentUDPIdleConnections 增加UDP空闲连接计数
     pub fn increment_current_udp_idle_connections(&self, delta: i64) {
-        self.stats.current_udp_idle_connections.fetch_add(delta, Ordering::Relaxed);
+        self.stats
+            .current_udp_idle_connections
+            .fetch_add(delta, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementTotalConnectionsReused 增加连接复用计数
     pub fn increment_total_connections_reused(&self) {
-        self.stats.total_connections_reused.fetch_add(1, Ordering::Relaxed);
+        self.stats
+            .total_connections_reused
+            .fetch_add(1, Ordering::Relaxed);
         self.update_time();
     }
 

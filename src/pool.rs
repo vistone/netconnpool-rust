@@ -12,9 +12,9 @@ use crate::udp_utils::clear_udp_read_buffer;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, RwLock, Weak};
+use std::sync::{Arc, Condvar, Mutex, RwLock, Weak};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// PooledConnection 自动归还的连接包装器
 /// 实现 RAII 机制，Drop 时自动归还连接到池中
@@ -60,6 +60,10 @@ struct PoolInner {
     idle_connections: [Mutex<Vec<Arc<Connection>>>; 4],
     closed: AtomicBool,
     stats_collector: Option<Arc<StatsCollector>>,
+
+    // 等待/唤醒：当达到 max_connections 且无空闲连接时，等待归还/释放
+    wait_lock: Mutex<()>,
+    available: Condvar,
 }
 
 impl Pool {
@@ -85,6 +89,8 @@ impl Pool {
             ],
             closed: AtomicBool::new(false),
             stats_collector,
+            wait_lock: Mutex::new(()),
+            available: Condvar::new(),
         });
 
         // 启动后台清理线程
@@ -96,7 +102,46 @@ impl Pool {
             })
             .map_err(|e| NetConnPoolError::IoError(e))?;
 
+        // 启动预热线程（min_connections）
+        // 仅客户端模式预热；服务器模式预热可能会阻塞在 accept 上。
+        if inner.config.mode == PoolMode::Client && inner.config.min_connections > 0 {
+            let weak_inner = Arc::downgrade(&inner);
+            let _ = thread::Builder::new()
+                .name("connection-pool-prewarmer".to_string())
+                .spawn(move || {
+                    Self::prewarm(weak_inner);
+                });
+        }
+
         Ok(Self { inner })
+    }
+
+    fn prewarm(inner: Weak<PoolInner>) {
+        let pool = match inner.upgrade() {
+            Some(p) => p,
+            None => return,
+        };
+
+        let target = pool.config.min_connections;
+        drop(pool);
+
+        for _ in 0..target {
+            let pool = match inner.upgrade() {
+                Some(p) => p,
+                None => return,
+            };
+            if pool.is_closed() {
+                return;
+            }
+
+            // 预热只做 best-effort：创建失败不影响 Pool::new
+            if let Ok(conn) = pool.create_connection(None, None) {
+                pool.add_idle_connection(conn);
+            } else {
+                // dialer 可能暂时不可用（例如测试场景未启动服务），直接停止预热
+                return;
+            }
+        }
     }
 
     /// 后台清理任务
@@ -111,7 +156,11 @@ impl Pool {
                 break;
             }
 
-            let interval = pool.config.health_check_interval;
+            let interval = if pool.config.health_check_interval.is_zero() {
+                Duration::from_secs(1)
+            } else {
+                pool.config.health_check_interval
+            };
             drop(pool); // 释放Arc，允许Pool被销毁
 
             thread::sleep(interval);
@@ -156,12 +205,20 @@ impl Pool {
     }
 
     /// GetWithProtocol 获取指定协议的连接
-    pub fn get_with_protocol(&self, protocol: Protocol, timeout: Duration) -> Result<PooledConnection> {
+    pub fn get_with_protocol(
+        &self,
+        protocol: Protocol,
+        timeout: Duration,
+    ) -> Result<PooledConnection> {
         self.inner.get_connection(Some(protocol), None, timeout)
     }
 
     /// GetWithIPVersion 获取指定IP版本的连接
-    pub fn get_with_ip_version(&self, ip_version: IPVersion, timeout: Duration) -> Result<PooledConnection> {
+    pub fn get_with_ip_version(
+        &self,
+        ip_version: IPVersion,
+        timeout: Duration,
+    ) -> Result<PooledConnection> {
         self.inner.get_connection(None, Some(ip_version), timeout)
     }
 
@@ -195,29 +252,23 @@ impl PoolInner {
             return Ok(());
         }
 
+        // 唤醒所有等待者
+        self.available.notify_all();
+
         // 获取所有连接并关闭
         let conns: Vec<Arc<Connection>> = {
             let connections = self.all_connections.read().unwrap();
             connections.values().cloned().collect()
         };
 
+        // 逐个 remove，确保统计与 idle 清理一致
         for conn in conns {
-            let _ = conn.close();
+            let _ = self.remove_connection(&conn);
         }
 
-        if let Some(stats) = &self.stats_collector {
-            stats.increment_total_connections_closed();
-        }
-
-        // 清空所有集合
-        {
-            let mut connections = self.all_connections.write().unwrap();
-            connections.clear();
-        }
-
+        // 最后兜底清空 idle（理论上 remove_connection 已做）
         for idle in &self.idle_connections {
-            let mut idle_vec = idle.lock().unwrap();
-            idle_vec.clear();
+            idle.lock().unwrap().clear();
         }
 
         Ok(())
@@ -239,16 +290,28 @@ impl PoolInner {
     }
 
     // 获取符合条件的空闲连接索引列表
-    fn get_target_buckets(&self, protocol: Option<Protocol>, ip_version: Option<IPVersion>) -> Vec<usize> {
+    fn get_target_buckets(
+        &self,
+        protocol: Option<Protocol>,
+        ip_version: Option<IPVersion>,
+    ) -> Vec<usize> {
         let mut indices = Vec::new();
         let protocols = if let Some(p) = protocol {
-            if p == Protocol::Unknown { vec![Protocol::TCP, Protocol::UDP] } else { vec![p] }
+            if p == Protocol::Unknown {
+                vec![Protocol::TCP, Protocol::UDP]
+            } else {
+                vec![p]
+            }
         } else {
             vec![Protocol::TCP, Protocol::UDP]
         };
 
         let ip_versions = if let Some(ip) = ip_version {
-            if ip == IPVersion::Unknown { vec![IPVersion::IPv4, IPVersion::IPv6] } else { vec![ip] }
+            if ip == IPVersion::Unknown {
+                vec![IPVersion::IPv4, IPVersion::IPv6]
+            } else {
+                vec![ip]
+            }
         } else {
             vec![IPVersion::IPv4, IPVersion::IPv6]
         };
@@ -277,28 +340,21 @@ impl PoolInner {
             stats.increment_total_get_requests();
         }
 
-        let start_time = std::time::Instant::now();
+        let start_time = Instant::now();
         let bucket_indices = self.get_target_buckets(protocol, ip_version);
-        
-        let mut loop_count = 0;
 
         loop {
             if self.is_closed() {
                 return Err(NetConnPoolError::PoolClosed);
             }
 
-            if start_time.elapsed() > timeout {
+            let elapsed = start_time.elapsed();
+            if elapsed > timeout {
                 if let Some(stats) = &self.stats_collector {
                     stats.increment_failed_gets();
+                    stats.increment_timeout_gets();
                 }
                 return Err(NetConnPoolError::GetConnectionTimeout);
-            }
-            
-            // 限制循环次数防止CPU空转，适当休眠
-            loop_count += 1;
-            if loop_count > 100 { // 稍微休眠
-                 thread::sleep(Duration::from_millis(10));
-                 loop_count = 0;
             }
 
             // 1. 尝试从空闲池获取
@@ -309,20 +365,25 @@ impl PoolInner {
                 };
 
                 if let Some(conn) = conn {
-                    if !self.is_connection_valid(&conn) {
+                    // 从 idle 移除即应更新 idle 统计（无论最终是否可用）
+                    if let Some(stats) = &self.stats_collector {
+                        self.update_stats_on_idle_pop(stats, &conn);
+                    }
+
+                    if !self.is_connection_valid_for_borrow(&conn) {
                         let _ = self.remove_connection(&conn);
                         continue;
                     }
 
                     conn.mark_in_use();
                     conn.increment_reuse_count();
-                    
+
                     if let Some(on_borrow) = &self.config.on_borrow {
                         on_borrow(&conn.connection_type());
                     }
 
                     if let Some(stats) = &self.stats_collector {
-                        self.update_stats_on_get(&stats, &conn, true);
+                        self.update_stats_on_get_success(stats, true, start_time.elapsed());
                     }
 
                     return Ok(PooledConnection::new(conn, Arc::downgrade(self)));
@@ -333,8 +394,10 @@ impl PoolInner {
             if self.config.max_connections > 0 {
                 let current = self.all_connections.read().unwrap().len();
                 if current >= self.config.max_connections {
-                    // 等待重试
-                    thread::sleep(Duration::from_millis(10));
+                    // 阻塞等待归还/释放（或直到超时）
+                    let remaining = timeout.saturating_sub(elapsed);
+                    let guard = self.wait_lock.lock().unwrap();
+                    let _ = self.available.wait_timeout(guard, remaining).unwrap();
                     continue;
                 }
             }
@@ -343,15 +406,15 @@ impl PoolInner {
             match self.create_connection(protocol, ip_version) {
                 Ok(conn) => {
                     conn.mark_in_use();
-                    
+
                     if let Some(on_borrow) = &self.config.on_borrow {
                         on_borrow(&conn.connection_type());
                     }
 
                     if let Some(stats) = &self.stats_collector {
-                        self.update_stats_on_get(&stats, &conn, false);
+                        self.update_stats_on_get_success(stats, false, start_time.elapsed());
                     }
-                    
+
                     return Ok(PooledConnection::new(conn, Arc::downgrade(self)));
                 }
                 Err(NetConnPoolError::MaxConnectionsReached) => {
@@ -377,7 +440,7 @@ impl PoolInner {
     fn create_connection(
         &self,
         required_protocol: Option<Protocol>,
-        required_ip_version: Option<IPVersion>
+        required_ip_version: Option<IPVersion>,
     ) -> Result<Arc<Connection>> {
         // Double check max connections under write lock to ensure consistency
         // But creating connection takes time, we shouldn't hold lock.
@@ -385,16 +448,18 @@ impl PoolInner {
 
         // Check count first
         if self.config.max_connections > 0 {
-             let current = self.all_connections.read().unwrap().len();
-             if current >= self.config.max_connections {
-                 return Err(NetConnPoolError::MaxConnectionsReached);
-             }
+            let current = self.all_connections.read().unwrap().len();
+            if current >= self.config.max_connections {
+                return Err(NetConnPoolError::MaxConnectionsReached);
+            }
         }
 
         let conn_type = match self.config.mode {
             PoolMode::Client => {
                 if let Some(dialer) = &self.config.dialer {
-                    dialer(required_protocol).map_err(|e| NetConnPoolError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e)))?
+                    dialer(required_protocol).map_err(|e| {
+                        NetConnPoolError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e))
+                    })?
                 } else {
                     return Err(NetConnPoolError::InvalidConfig);
                 }
@@ -402,7 +467,9 @@ impl PoolInner {
             PoolMode::Server => {
                 if let Some(listener) = &self.config.listener {
                     let acceptor = self.config.acceptor.as_ref().unwrap();
-                    ConnectionType::Tcp(acceptor(listener).map_err(|e| NetConnPoolError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e)))?)
+                    ConnectionType::Tcp(acceptor(listener).map_err(|e| {
+                        NetConnPoolError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e))
+                    })?)
                 } else {
                     return Err(NetConnPoolError::InvalidConfig);
                 }
@@ -410,12 +477,25 @@ impl PoolInner {
         };
 
         if let Some(on_created) = &self.config.on_created {
-            on_created(&conn_type).map_err(|e| NetConnPoolError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            on_created(&conn_type).map_err(|e| {
+                NetConnPoolError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e))
+            })?;
         }
 
+        // 连接池内部统一使用阻塞模式（与 UDP 清缓冲逻辑保持一致）
         let conn = match conn_type {
-            ConnectionType::Tcp(stream) => Arc::new(Connection::new_from_tcp(stream, None)),
-            ConnectionType::Udp(socket) => Arc::new(Connection::new_from_udp(socket, None)),
+            ConnectionType::Tcp(stream) => {
+                stream
+                    .set_nonblocking(false)
+                    .map_err(NetConnPoolError::IoError)?;
+                Arc::new(Connection::new_from_tcp(stream, None))
+            }
+            ConnectionType::Udp(socket) => {
+                socket
+                    .set_nonblocking(false)
+                    .map_err(NetConnPoolError::IoError)?;
+                Arc::new(Connection::new_from_udp(socket, None))
+            }
         };
 
         // Check requirements
@@ -424,28 +504,28 @@ impl PoolInner {
                 // Mismatch, close and return specific error or handled by caller?
                 // Caller expects specific protocol.
                 // We should close this connection as it's useless for the caller.
-                // But maybe we can put it into pool? 
+                // But maybe we can put it into pool?
                 // "Put" requires it to be in all_connections.
                 // Let's add it to pool and return error, so another thread can use it?
-                // Implementation complexity: high. 
+                // Implementation complexity: high.
                 // Simple approach: Close and return Error.
-                 let _ = conn.close();
-                 return Err(NetConnPoolError::NoConnectionForProtocol);
+                self.close_connection(&conn);
+                return Err(NetConnPoolError::NoConnectionForProtocol);
             }
         }
         if let Some(ip) = required_ip_version {
-             if ip != IPVersion::Unknown && conn.get_ip_version() != ip {
-                 let _ = conn.close();
-                 return Err(NetConnPoolError::NoConnectionForIPVersion);
-             }
+            if ip != IPVersion::Unknown && conn.get_ip_version() != ip {
+                self.close_connection(&conn);
+                return Err(NetConnPoolError::NoConnectionForIPVersion);
+            }
         }
 
         // Insert into map
         {
             let mut connections = self.all_connections.write().unwrap();
             if self.config.max_connections > 0 && connections.len() >= self.config.max_connections {
-                 let _ = conn.close();
-                 return Err(NetConnPoolError::MaxConnectionsReached);
+                self.close_connection(&conn);
+                return Err(NetConnPoolError::MaxConnectionsReached);
             }
             connections.insert(conn.id, conn.clone());
         }
@@ -468,12 +548,20 @@ impl PoolInner {
     }
 
     fn return_connection(&self, conn: Arc<Connection>) {
+        // 连接归还意味着不再 active
+        if let Some(stats) = &self.stats_collector {
+            stats.increment_current_active_connections(-1);
+        }
+
         if self.is_closed() {
             let _ = self.remove_connection(&conn);
             return;
         }
 
-        if !self.is_connection_valid(&conn) {
+        // 标记为空闲，方便后续 idle/泄漏/超时判断
+        conn.mark_idle();
+
+        if !self.is_connection_valid_for_borrow(&conn) {
             let _ = self.remove_connection(&conn);
             return;
         }
@@ -486,31 +574,30 @@ impl PoolInner {
         if self.config.clear_udp_buffer_on_return && conn.get_protocol() == Protocol::UDP {
             if let Some(udp_socket) = conn.udp_conn() {
                 let timeout = self.config.udp_buffer_clear_timeout;
-                let _ = clear_udp_read_buffer(udp_socket, timeout, self.config.max_buffer_clear_packets);
+                let _ = clear_udp_read_buffer(
+                    udp_socket,
+                    timeout,
+                    self.config.max_buffer_clear_packets,
+                );
             }
-        }
-
-        conn.mark_idle();
-
-        if let Some(stats) = &self.stats_collector {
-            stats.increment_current_active_connections(-1);
         }
 
         // Put back to idle list
         if let Some(idx) = Self::get_bucket_index(conn.get_protocol(), conn.get_ip_version()) {
             let mut idle = self.idle_connections[idx].lock().unwrap();
-            
+
             // Check max idle
             if idle.len() < self.config.max_idle_connections {
-                 idle.push(conn.clone());
-                 drop(idle); // Release lock early
+                idle.push(conn.clone());
+                drop(idle); // Release lock early
 
-                 if let Some(stats) = &self.stats_collector {
-                     self.update_stats_on_return(&stats, &conn);
-                 }
+                if let Some(stats) = &self.stats_collector {
+                    self.update_stats_on_idle_push(stats, &conn);
+                }
+                self.available.notify_one();
             } else {
-                 drop(idle);
-                 let _ = self.remove_connection(&conn);
+                drop(idle);
+                let _ = self.remove_connection(&conn);
             }
         } else {
             // Unknown protocol/ip, cannot pool efficiently. Close it.
@@ -519,8 +606,19 @@ impl PoolInner {
     }
 
     fn remove_connection(&self, conn: &Arc<Connection>) -> Result<()> {
-        let _ = conn.close();
-        
+        // 如果在关闭/清理过程中强制移除使用中的连接，修正 active 统计
+        if conn.is_in_use() {
+            if let Some(stats) = &self.stats_collector {
+                stats.increment_current_active_connections(-1);
+            }
+            conn.mark_idle();
+        }
+
+        // 如果它仍在 idle 列表里，先移除（并同步 idle 统计）
+        self.remove_from_idle_if_present(conn);
+
+        self.close_connection(conn);
+
         {
             let mut connections = self.all_connections.write().unwrap();
             connections.remove(&conn.id);
@@ -528,7 +626,7 @@ impl PoolInner {
 
         if let Some(stats) = &self.stats_collector {
             stats.increment_total_connections_closed();
-             match conn.get_ip_version() {
+            match conn.get_ip_version() {
                 IPVersion::IPv4 => stats.increment_current_ipv4_connections(-1),
                 IPVersion::IPv6 => stats.increment_current_ipv6_connections(-1),
                 _ => {}
@@ -539,82 +637,104 @@ impl PoolInner {
                 _ => {}
             }
         }
+
+        // 释放连接可能让等待者继续创建/获取
+        self.available.notify_one();
         Ok(())
     }
 
     fn cleanup(&self) {
-        let mut to_remove = Vec::new();
-        
-        // Scan for expired connections
-        {
+        let conns: Vec<Arc<Connection>> = {
             let connections = self.all_connections.read().unwrap();
-            for conn in connections.values() {
-                if !self.is_connection_valid(conn) {
-                    to_remove.push(conn.clone());
+            connections.values().cloned().collect()
+        };
+
+        let mut to_remove = Vec::new();
+
+        for conn in conns {
+            if self.is_closed() {
+                return;
+            }
+
+            // 连接使用中：不强制关闭，只做泄漏/超龄标记，等待归还时清理
+            if conn.is_in_use() {
+                if conn.is_leaked(self.config.connection_leak_timeout) {
+                    if conn.report_leak_once() {
+                        if let Some(stats) = &self.stats_collector {
+                            stats.increment_leaked_connections();
+                        }
+                    }
+                    conn.mark_unhealthy();
                 }
+                if conn.is_expired(self.config.max_lifetime) {
+                    conn.mark_unhealthy();
+                }
+                continue;
+            }
+
+            // 健康检查（仅对 idle 连接）
+            if self.config.enable_health_check {
+                if let Some(checker) = &self.config.health_checker {
+                    if conn.should_health_check(self.config.health_check_interval) {
+                        if let Some(stats) = &self.stats_collector {
+                            stats.increment_health_check_attempts();
+                        }
+                        let ok = checker(conn.connection_type());
+                        if !ok {
+                            if let Some(stats) = &self.stats_collector {
+                                stats.increment_health_check_failures();
+                                stats.increment_unhealthy_connections();
+                            }
+                            conn.update_health(false);
+                            to_remove.push(conn.clone());
+                            continue;
+                        }
+                        conn.update_health(true);
+                    }
+                }
+            }
+
+            if !self.is_connection_valid_for_borrow(&conn) {
+                to_remove.push(conn.clone());
             }
         }
 
         for conn in to_remove {
             let _ = self.remove_connection(&conn);
-            // Also need to remove from idle list if it's there
-            // Since remove_connection only removes from all_connections map,
-            // we rely on the fact that when we pop from idle list, we validate connection.
-            // But we should also try to clean up idle lists to avoid them filling with garbage.
-        }
-        
-        // Cleanup idle lists for closed connections
-        for idle in &self.idle_connections {
-            let mut list = idle.lock().unwrap();
-            // retain only connections that are valid AND exist in all_connections (implied valid)
-            list.retain(|c| self.is_connection_valid(c));
-            
-            // Sync idle stats? Stats are updated on push/pop. 
-            // If we remove here, we should update stats.
-            // But doing diff is hard.
-            // We should decrement stats for removed idle connections.
-            // Implementing correct stats update in retain is hard.
-            // Alternative: pop all, filter, push back.
         }
     }
 
-    fn is_connection_valid(&self, conn: &Connection) -> bool {
+    fn is_connection_valid_for_borrow(&self, conn: &Connection) -> bool {
+        if conn.is_closed() {
+            return false;
+        }
         if !conn.health_status() {
             return false;
         }
         if conn.is_expired(self.config.max_lifetime) {
             return false;
         }
-        // Idle timeout check could be added here
         if conn.is_idle_expired(self.config.idle_timeout) {
             return false;
         }
         true
     }
 
-    fn update_stats_on_get(&self, stats: &StatsCollector, conn: &Connection, is_reused: bool) {
-        if is_reused {
-            stats.increment_successful_gets();
-            stats.increment_current_active_connections(1);
-            stats.increment_current_idle_connections(-1);
-            stats.increment_total_connections_reused();
-            match conn.get_ip_version() {
-                IPVersion::IPv4 => stats.increment_current_ipv4_idle_connections(-1),
-                IPVersion::IPv6 => stats.increment_current_ipv6_idle_connections(-1),
-                _ => {}
-            }
-            match conn.get_protocol() {
-                Protocol::TCP => stats.increment_current_tcp_idle_connections(-1),
-                Protocol::UDP => stats.increment_current_udp_idle_connections(-1),
-                _ => {}
-            }
-        } else {
-             stats.increment_successful_gets();
-             stats.increment_current_active_connections(1);
+    fn update_stats_on_idle_pop(&self, stats: &StatsCollector, conn: &Connection) {
+        stats.increment_current_idle_connections(-1);
+        match conn.get_ip_version() {
+            IPVersion::IPv4 => stats.increment_current_ipv4_idle_connections(-1),
+            IPVersion::IPv6 => stats.increment_current_ipv6_idle_connections(-1),
+            _ => {}
+        }
+        match conn.get_protocol() {
+            Protocol::TCP => stats.increment_current_tcp_idle_connections(-1),
+            Protocol::UDP => stats.increment_current_udp_idle_connections(-1),
+            _ => {}
         }
     }
 
-    fn update_stats_on_return(&self, stats: &StatsCollector, conn: &Connection) {
+    fn update_stats_on_idle_push(&self, stats: &StatsCollector, conn: &Connection) {
         stats.increment_current_idle_connections(1);
         match conn.get_ip_version() {
             IPVersion::IPv4 => stats.increment_current_ipv4_idle_connections(1),
@@ -625,6 +745,73 @@ impl PoolInner {
             Protocol::TCP => stats.increment_current_tcp_idle_connections(1),
             Protocol::UDP => stats.increment_current_udp_idle_connections(1),
             _ => {}
+        }
+    }
+
+    fn update_stats_on_get_success(
+        &self,
+        stats: &StatsCollector,
+        is_reused: bool,
+        get_duration: Duration,
+    ) {
+        stats.increment_successful_gets();
+        stats.increment_current_active_connections(1);
+        if is_reused {
+            stats.increment_total_connections_reused();
+        }
+        stats.record_get_time(get_duration);
+    }
+
+    fn add_idle_connection(&self, conn: Arc<Connection>) {
+        if self.is_closed() {
+            let _ = self.remove_connection(&conn);
+            return;
+        }
+
+        conn.mark_idle();
+
+        if let Some(idx) = Self::get_bucket_index(conn.get_protocol(), conn.get_ip_version()) {
+            let mut idle = self.idle_connections[idx].lock().unwrap();
+            if idle.len() < self.config.max_idle_connections {
+                idle.push(conn.clone());
+                drop(idle);
+                if let Some(stats) = &self.stats_collector {
+                    self.update_stats_on_idle_push(stats, &conn);
+                }
+                self.available.notify_one();
+            } else {
+                drop(idle);
+                let _ = self.remove_connection(&conn);
+            }
+        } else {
+            let _ = self.remove_connection(&conn);
+        }
+    }
+
+    fn close_connection(&self, conn: &Arc<Connection>) {
+        if let Some(closer) = &self.config.close_conn {
+            let _ = closer(conn.connection_type());
+        }
+        let _ = conn.close();
+    }
+
+    fn remove_from_idle_if_present(&self, conn: &Arc<Connection>) {
+        if let Some(idx) = Self::get_bucket_index(conn.get_protocol(), conn.get_ip_version()) {
+            let mut idle = self.idle_connections[idx].lock().unwrap();
+            let before = idle.len();
+            if before == 0 {
+                return;
+            }
+            idle.retain(|c| c.id != conn.id);
+            let after = idle.len();
+            drop(idle);
+
+            if before != after {
+                if let Some(stats) = &self.stats_collector {
+                    // 从 idle 移除一次
+                    self.update_stats_on_idle_pop(stats, conn);
+                }
+            }
         }
     }
 }

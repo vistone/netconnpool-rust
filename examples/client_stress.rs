@@ -37,11 +37,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 socket.connect(addr)?;
                 Ok(ConnectionType::Udp(socket))
             }
-            _ => {
-                TcpStream::connect(addr)
-                    .map(|s| ConnectionType::Tcp(s))
-                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
-            }
+            _ => TcpStream::connect(addr)
+                .map(|s| ConnectionType::Tcp(s))
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>),
         }
     }));
 
@@ -75,43 +73,53 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 启动统计打印线程
     let stats_monitor = stats.clone();
     let pool_monitor = pool.clone();
-    thread::spawn(move || {
-        loop {
-            thread::sleep(Duration::from_secs(2));
-            let elapsed = start_time.elapsed().as_secs_f64();
-            let tcp_total = stats_monitor.total_tcp_requests.load(Ordering::Relaxed);
-            let udp_total = stats_monitor.total_udp_requests.load(Ordering::Relaxed);
-            let total = tcp_total + udp_total;
-            let tcp_success = stats_monitor.success_tcp_requests.load(Ordering::Relaxed);
-            let udp_success = stats_monitor.success_udp_requests.load(Ordering::Relaxed);
-            
-            println!("\n--- Real-time Client Stats ({:.1}s) ---", elapsed);
-            println!("QPS: {:.2}", total as f64 / elapsed);
-            println!("TCP: Total={}, Success={}, Failed={}", tcp_total, tcp_success, stats_monitor.failed_tcp_requests.load(Ordering::Relaxed));
-            println!("UDP: Total={}, Success={}, Failed={}", udp_total, udp_success, stats_monitor.failed_udp_requests.load(Ordering::Relaxed));
-            println!("Traffic: Sent={} MB, Recv={} MB", 
-                stats_monitor.total_bytes_sent.load(Ordering::Relaxed) / 1024 / 1024,
-                stats_monitor.total_bytes_received.load(Ordering::Relaxed) / 1024 / 1024
-            );
-            
-            let pool_stats = pool_monitor.stats();
-            println!("Pool Stats:");
-            println!("  Active: {}, Idle: {} (TCP:{}, UDP:{})", 
-                pool_stats.current_active_connections,
-                pool_stats.current_idle_connections,
-                pool_stats.current_tcp_idle_connections,
-                pool_stats.current_udp_idle_connections
-            );
-            println!("  Created: TCP={}, UDP={}", 
-                pool_stats.current_tcp_connections,
-                pool_stats.current_udp_connections
-            );
-            println!("  Reuse Count: {}, Successful Gets: {}", 
-                pool_stats.total_connections_reused,
-                pool_stats.successful_gets
-            );
-            println!("---------------------------------------");
-        }
+    thread::spawn(move || loop {
+        thread::sleep(Duration::from_secs(2));
+        let elapsed = start_time.elapsed().as_secs_f64();
+        let tcp_total = stats_monitor.total_tcp_requests.load(Ordering::Relaxed);
+        let udp_total = stats_monitor.total_udp_requests.load(Ordering::Relaxed);
+        let total = tcp_total + udp_total;
+        let tcp_success = stats_monitor.success_tcp_requests.load(Ordering::Relaxed);
+        let udp_success = stats_monitor.success_udp_requests.load(Ordering::Relaxed);
+
+        println!("\n--- Real-time Client Stats ({:.1}s) ---", elapsed);
+        println!("QPS: {:.2}", total as f64 / elapsed);
+        println!(
+            "TCP: Total={}, Success={}, Failed={}",
+            tcp_total,
+            tcp_success,
+            stats_monitor.failed_tcp_requests.load(Ordering::Relaxed)
+        );
+        println!(
+            "UDP: Total={}, Success={}, Failed={}",
+            udp_total,
+            udp_success,
+            stats_monitor.failed_udp_requests.load(Ordering::Relaxed)
+        );
+        println!(
+            "Traffic: Sent={} MB, Recv={} MB",
+            stats_monitor.total_bytes_sent.load(Ordering::Relaxed) / 1024 / 1024,
+            stats_monitor.total_bytes_received.load(Ordering::Relaxed) / 1024 / 1024
+        );
+
+        let pool_stats = pool_monitor.stats();
+        println!("Pool Stats:");
+        println!(
+            "  Active: {}, Idle: {} (TCP:{}, UDP:{})",
+            pool_stats.current_active_connections,
+            pool_stats.current_idle_connections,
+            pool_stats.current_tcp_idle_connections,
+            pool_stats.current_udp_idle_connections
+        );
+        println!(
+            "  Created: TCP={}, UDP={}",
+            pool_stats.current_tcp_connections, pool_stats.current_udp_connections
+        );
+        println!(
+            "  Reuse Count: {}, Successful Gets: {}",
+            pool_stats.total_connections_reused, pool_stats.successful_gets
+        );
+        println!("---------------------------------------");
     });
 
     for i in 0..num_threads {
@@ -126,28 +134,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     stats.total_udp_requests.fetch_add(1, Ordering::Relaxed);
                     match pool.get_udp() {
                         Ok(conn) => {
-                             if let Some(socket) = conn.udp_conn() {
-                                 // UDP send
-                                 if let Err(_) = socket.send(&data) {
-                                     stats.failed_udp_requests.fetch_add(1, Ordering::Relaxed);
-                                     continue;
-                                 }
-                                 stats.total_bytes_sent.fetch_add(data_size, Ordering::Relaxed);
-                                 
-                                 // UDP recv
-                                 let mut buffer = vec![0; data_size + 100];
-                                 match socket.recv(&mut buffer) {
-                                     Ok(_) => {
-                                         stats.total_bytes_received.fetch_add(data_size, Ordering::Relaxed);
-                                         stats.success_udp_requests.fetch_add(1, Ordering::Relaxed);
-                                     }
-                                     Err(_) => {
-                                         stats.failed_udp_requests.fetch_add(1, Ordering::Relaxed);
-                                     }
-                                 }
-                             } else {
-                                 stats.failed_udp_requests.fetch_add(1, Ordering::Relaxed);
-                             }
+                            if let Some(socket) = conn.udp_conn() {
+                                // UDP send
+                                if let Err(_) = socket.send(&data) {
+                                    stats.failed_udp_requests.fetch_add(1, Ordering::Relaxed);
+                                    continue;
+                                }
+                                stats
+                                    .total_bytes_sent
+                                    .fetch_add(data_size, Ordering::Relaxed);
+
+                                // UDP recv
+                                let mut buffer = vec![0; data_size + 100];
+                                match socket.recv(&mut buffer) {
+                                    Ok(_) => {
+                                        stats
+                                            .total_bytes_received
+                                            .fetch_add(data_size, Ordering::Relaxed);
+                                        stats.success_udp_requests.fetch_add(1, Ordering::Relaxed);
+                                    }
+                                    Err(_) => {
+                                        stats.failed_udp_requests.fetch_add(1, Ordering::Relaxed);
+                                    }
+                                }
+                            } else {
+                                stats.failed_udp_requests.fetch_add(1, Ordering::Relaxed);
+                            }
                         }
                         Err(_) => {
                             stats.failed_udp_requests.fetch_add(1, Ordering::Relaxed);
@@ -163,7 +175,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     stats.failed_tcp_requests.fetch_add(1, Ordering::Relaxed);
                                     continue;
                                 }
-                                stats.total_bytes_sent.fetch_add(data_size, Ordering::Relaxed);
+                                stats
+                                    .total_bytes_sent
+                                    .fetch_add(data_size, Ordering::Relaxed);
 
                                 // Read echo
                                 let mut buffer = vec![0; data_size];
@@ -171,7 +185,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     stats.failed_tcp_requests.fetch_add(1, Ordering::Relaxed);
                                     continue;
                                 }
-                                stats.total_bytes_received.fetch_add(data_size, Ordering::Relaxed);
+                                stats
+                                    .total_bytes_received
+                                    .fetch_add(data_size, Ordering::Relaxed);
                                 stats.success_tcp_requests.fetch_add(1, Ordering::Relaxed);
                             } else {
                                 stats.failed_tcp_requests.fetch_add(1, Ordering::Relaxed);
@@ -193,17 +209,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let total_time = start_time.elapsed();
-    let total_requests = stats.total_tcp_requests.load(Ordering::Relaxed) + stats.total_udp_requests.load(Ordering::Relaxed);
-    
+    let total_requests = stats.total_tcp_requests.load(Ordering::Relaxed)
+        + stats.total_udp_requests.load(Ordering::Relaxed);
+
     println!("\nTest Completed in {:?}", total_time);
     println!("Final Stats:");
     println!("  Total Requests: {}", total_requests);
-    println!("  TCP Success: {}", stats.success_tcp_requests.load(Ordering::Relaxed));
-    println!("  UDP Success: {}", stats.success_udp_requests.load(Ordering::Relaxed));
-    println!("  Throughput: {:.2} MB/s", 
-        (stats.total_bytes_sent.load(Ordering::Relaxed) + stats.total_bytes_received.load(Ordering::Relaxed)) as f64 / 1024.0 / 1024.0 / total_time.as_secs_f64()
+    println!(
+        "  TCP Success: {}",
+        stats.success_tcp_requests.load(Ordering::Relaxed)
     );
-    
+    println!(
+        "  UDP Success: {}",
+        stats.success_udp_requests.load(Ordering::Relaxed)
+    );
+    println!(
+        "  Throughput: {:.2} MB/s",
+        (stats.total_bytes_sent.load(Ordering::Relaxed)
+            + stats.total_bytes_received.load(Ordering::Relaxed)) as f64
+            / 1024.0
+            / 1024.0
+            / total_time.as_secs_f64()
+    );
+
     // Final Pool Stats
     let pool_stats = pool.stats();
     println!("\nFinal Pool Internal Stats:");
