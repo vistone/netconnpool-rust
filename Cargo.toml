@@ -5,7 +5,7 @@ edition = "2021"
 authors = ["vistone"]
 description = "一个功能全面、高性能的 Rust 语言网络连接池管理库"
 license = "BSD-3-Clause"
-repository = "https://github.com/vistone/netconnpool"
+repository = "https://github.com/vistone/netconnpool-rust"
 keywords = ["connection-pool", "network", "tcp", "udp", "ipv4", "ipv6"]
 categories = ["network-programming"]
 
