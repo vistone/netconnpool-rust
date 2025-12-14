@@ -47,3 +47,7 @@ path = "test/performance_test.rs"
 [[test]]
 name = "performance_report"
 path = "test/performance_report.rs"
+
+[[test]]
+name = "stats_test"
+path = "test/stats_test.rs"
