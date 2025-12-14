@@ -8,8 +8,15 @@ use netconnpool::*;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc as StdArc,
+};
 use std::thread;
 use std::time::{Duration, Instant};
+
+static PERF_REPORT_LOCK: Mutex<()> = Mutex::new(());
 
 fn create_test_server() -> TcpListener {
     TcpListener::bind("127.0.0.1:0").unwrap()
@@ -19,9 +26,60 @@ fn get_server_addr(listener: &TcpListener) -> String {
     format!("{}", listener.local_addr().unwrap())
 }
 
+fn spawn_echo_server(listener: TcpListener) -> (StdArc<AtomicBool>, thread::JoinHandle<()>) {
+    let stop = StdArc::new(AtomicBool::new(false));
+    let stop2 = stop.clone();
+
+    let _ = listener.set_nonblocking(true);
+
+    let handle = thread::spawn(move || {
+        while !stop2.load(Ordering::Relaxed) {
+            match listener.accept() {
+                Ok((mut stream, _)) => {
+                    let _ = stream.set_read_timeout(Some(Duration::from_millis(50)));
+                    let _ = stream.set_write_timeout(Some(Duration::from_millis(50)));
+
+                    let stop3 = stop2.clone();
+                    thread::spawn(move || {
+                        let mut buf = vec![0u8; 64 * 1024];
+                        loop {
+                            if stop3.load(Ordering::Relaxed) {
+                                let _ = stream.shutdown(std::net::Shutdown::Both);
+                                break;
+                            }
+                            match stream.read(&mut buf) {
+                                Ok(0) => break,
+                                Ok(n) => {
+                                    if stream.write_all(&buf[..n]).is_err() {
+                                        break;
+                                    }
+                                }
+                                Err(e)
+                                    if e.kind() == std::io::ErrorKind::WouldBlock
+                                        || e.kind() == std::io::ErrorKind::TimedOut =>
+                                {
+                                    continue;
+                                }
+                                Err(_) => break,
+                            }
+                        }
+                    });
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    thread::sleep(Duration::from_millis(1));
+                }
+                Err(_) => thread::sleep(Duration::from_millis(1)),
+            }
+        }
+    });
+
+    (stop, handle)
+}
+
 #[test]
 #[ignore]
 fn generate_performance_report() {
+    let _guard = PERF_REPORT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     // 生成完整的性能测试报告
     println!("\n");
     println!("╔════════════════════════════════════════════════════════════════╗");
@@ -38,18 +96,7 @@ fn generate_performance_report() {
     let addr = get_server_addr(&listener);
 
     // 启动测试服务器
-    let server_addr = addr.clone();
-    let server_handle = thread::spawn(move || {
-        let server = TcpListener::bind(&server_addr).unwrap();
-        for stream in server.incoming() {
-            if let Ok(mut stream) = stream {
-                let mut buf = vec![0u8; 8192];
-                if stream.read(&mut buf).is_ok() {
-                    let _ = stream.write_all(&buf);
-                }
-            }
-        }
-    });
+    let (stop, server_handle) = spawn_echo_server(listener);
 
     thread::sleep(Duration::from_millis(100));
 
@@ -375,5 +422,6 @@ fn generate_performance_report() {
     );
     println!();
 
-    drop(server_handle);
+    stop.store(true, Ordering::Relaxed);
+    let _ = server_handle.join();
 }

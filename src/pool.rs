@@ -12,7 +12,7 @@ use crate::udp_utils::clear_udp_read_buffer;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, Mutex, RwLock, Weak};
+use std::sync::{Arc, Mutex, RwLock, Weak};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -60,10 +60,6 @@ struct PoolInner {
     idle_connections: [Mutex<Vec<Arc<Connection>>>; 4],
     closed: AtomicBool,
     stats_collector: Option<Arc<StatsCollector>>,
-
-    // 等待/唤醒：当达到 max_connections 且无空闲连接时，等待归还/释放
-    wait_lock: Mutex<()>,
-    available: Condvar,
 }
 
 impl Pool {
@@ -89,8 +85,6 @@ impl Pool {
             ],
             closed: AtomicBool::new(false),
             stats_collector,
-            wait_lock: Mutex::new(()),
-            available: Condvar::new(),
         });
 
         // 启动后台清理线程
@@ -252,9 +246,6 @@ impl PoolInner {
             return Ok(());
         }
 
-        // 唤醒所有等待者
-        self.available.notify_all();
-
         // 获取所有连接并关闭
         let conns: Vec<Arc<Connection>> = {
             let connections = self.all_connections.read().unwrap();
@@ -394,11 +385,11 @@ impl PoolInner {
             if self.config.max_connections > 0 {
                 let current = self.all_connections.read().unwrap().len();
                 if current >= self.config.max_connections {
-                    // 阻塞等待归还/释放（或直到超时）
-                    let remaining = timeout.saturating_sub(elapsed);
-                    let guard = self.wait_lock.lock().unwrap();
-                    let _ = self.available.wait_timeout(guard, remaining).unwrap();
-                    continue;
+                    if let Some(stats) = &self.stats_collector {
+                        stats.increment_failed_gets();
+                    }
+                    // 连接池已耗尽：快速失败（由上层决定是否重试）
+                    return Err(NetConnPoolError::PoolExhausted);
                 }
             }
 
@@ -594,7 +585,6 @@ impl PoolInner {
                 if let Some(stats) = &self.stats_collector {
                     self.update_stats_on_idle_push(stats, &conn);
                 }
-                self.available.notify_one();
             } else {
                 drop(idle);
                 let _ = self.remove_connection(&conn);
@@ -638,8 +628,6 @@ impl PoolInner {
             }
         }
 
-        // 释放连接可能让等待者继续创建/获取
-        self.available.notify_one();
         Ok(())
     }
 
@@ -778,7 +766,6 @@ impl PoolInner {
                 if let Some(stats) = &self.stats_collector {
                     self.update_stats_on_idle_push(stats, &conn);
                 }
-                self.available.notify_one();
             } else {
                 drop(idle);
                 let _ = self.remove_connection(&conn);
