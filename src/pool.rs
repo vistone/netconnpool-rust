@@ -11,8 +11,8 @@ use crate::stats::StatsCollector;
 use crate::udp_utils::clear_udp_read_buffer;
 use std::collections::HashMap;
 use std::ops::Deref;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, RwLock, Weak};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Condvar, Mutex, RwLock, Weak};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -59,6 +59,11 @@ struct PoolInner {
     // 0: TCP IPv4, 1: TCP IPv6, 2: UDP IPv4, 3: UDP IPv6
     idle_connections: [Mutex<Vec<Arc<Connection>>>; 4],
     closed: AtomicBool,
+    // 当前借出的连接数（不依赖 enable_stats）
+    active_count: AtomicUsize,
+    // 用于在连接归还/池状态变化时唤醒 get() 等待者
+    wait_lock: Mutex<()>,
+    wait_cv: Condvar,
     stats_collector: Option<Arc<StatsCollector>>,
 }
 
@@ -105,6 +110,9 @@ impl Pool {
                 Mutex::new(Vec::new()),
             ],
             closed: AtomicBool::new(false),
+            active_count: AtomicUsize::new(0),
+            wait_lock: Mutex::new(()),
+            wait_cv: Condvar::new(),
             stats_collector,
         });
 
@@ -362,7 +370,43 @@ impl PoolInner {
             return Ok(());
         }
 
-        // 获取所有连接并关闭
+        // 唤醒所有等待 get() 的线程
+        self.wait_cv.notify_all();
+
+        // 1) 先关闭所有 idle 连接（不影响正在使用的连接）
+        // 为了保持 idle 统计一致性，这里显式扣减 idle 统计（因为我们会直接 drain bucket）
+        let mut idle_conns: Vec<Arc<Connection>> = Vec::new();
+        for idle in &self.idle_connections {
+            if let Ok(mut guard) = idle.lock() {
+                let drained = std::mem::take(&mut *guard);
+                idle_conns.extend(drained);
+            }
+        }
+
+        for conn in &idle_conns {
+            if let Some(stats) = &self.stats_collector {
+                self.update_stats_on_idle_pop(stats, conn);
+            }
+            let _ = self.remove_connection(conn);
+        }
+
+        // 2) 等待活跃连接归还（优雅关闭）
+        // 为避免 close 永久阻塞，最多等待 connection_leak_timeout（为 0 则不等待）
+        let wait_budget = self.config.connection_leak_timeout;
+        if !wait_budget.is_zero() {
+            let deadline = Instant::now() + wait_budget;
+            let mut guard = self.wait_lock.lock().unwrap_or_else(|e| e.into_inner());
+            while self.active_count.load(Ordering::Acquire) > 0 && Instant::now() < deadline {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                let (g, _timeout) = match self.wait_cv.wait_timeout(guard, remaining) {
+                    Ok(res) => res,
+                    Err(e) => e.into_inner(),
+                };
+                guard = g;
+            }
+        }
+
+        // 3) 最后兜底：关闭所有仍存活的连接（可能包含泄漏/长期占用）
         let conns: Vec<Arc<Connection>> = {
             let connections = self.all_connections.read().map_err(|e| {
                 NetConnPoolError::IoError(std::io::Error::new(
@@ -373,14 +417,8 @@ impl PoolInner {
             connections.values().cloned().collect()
         };
 
-        // 逐个 remove，确保统计与 idle 清理一致
         for conn in conns {
             let _ = self.remove_connection(&conn);
-        }
-
-        // 最后兜底清空 idle（理论上 remove_connection 已做）
-        for idle in &self.idle_connections {
-            let _ = idle.lock().map(|mut guard| guard.clear());
         }
 
         Ok(())
@@ -497,6 +535,7 @@ impl PoolInner {
 
                     conn.mark_in_use();
                     conn.increment_reuse_count();
+                    self.active_count.fetch_add(1, Ordering::Relaxed);
 
                     if let Some(on_borrow) = &self.config.on_borrow {
                         on_borrow(conn.connection_type());
@@ -510,34 +549,11 @@ impl PoolInner {
                 }
             }
 
-            // 2. 检查最大连接数
-            if self.config.max_connections > 0 {
-                let current = self
-                    .all_connections
-                    .read()
-                    .map_err(|e| {
-                        NetConnPoolError::IoError(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("读取连接数失败: {}", e),
-                        ))
-                    })?
-                    .len();
-                if current >= self.config.max_connections {
-                    if let Some(stats) = &self.stats_collector {
-                        stats.increment_failed_gets();
-                    }
-                    // 连接池已耗尽：快速失败（由上层决定是否重试）
-                    return Err(NetConnPoolError::PoolExhausted {
-                        current,
-                        max: self.config.max_connections,
-                    });
-                }
-            }
-
-            // 3. 创建新连接
+            // 2. 创建新连接（若并发下已满，会返回 MaxConnectionsReached）
             match self.create_connection(protocol, ip_version) {
                 Ok(conn) => {
                     conn.mark_in_use();
+                    self.active_count.fetch_add(1, Ordering::Relaxed);
 
                     if let Some(on_borrow) = &self.config.on_borrow {
                         on_borrow(conn.connection_type());
@@ -550,7 +566,32 @@ impl PoolInner {
                     return Ok(PooledConnection::new(conn, Arc::downgrade(self)));
                 }
                 Err(NetConnPoolError::MaxConnectionsReached { .. }) => {
-                    // 并发情况下可能刚检查完就满了，继续循环
+                    // 池已满：在 timeout 内等待连接归还（避免自旋 & 过早失败）
+                    if timeout.is_zero() {
+                        // 明确的快速失败语义
+                        let current = self
+                            .all_connections
+                            .read()
+                            .map_err(|e| {
+                                NetConnPoolError::IoError(std::io::Error::new(
+                                    std::io::ErrorKind::Other,
+                                    format!("读取连接数失败: {}", e),
+                                ))
+                            })?
+                            .len();
+                        return Err(NetConnPoolError::PoolExhausted {
+                            current,
+                            max: self.config.max_connections,
+                        });
+                    }
+
+                    let remaining = timeout.saturating_sub(start_time.elapsed());
+                    let guard = self.wait_lock.lock().unwrap_or_else(|e| e.into_inner());
+                    let _ = match self.wait_cv.wait_timeout(guard, remaining) {
+                        Ok(res) => res,
+                        Err(e) => e.into_inner(),
+                    };
+                    // 被唤醒/超时后继续循环：重试 idle 或创建
                     continue;
                 }
                 Err(e) => {
@@ -713,18 +754,21 @@ impl PoolInner {
     }
 
     fn return_connection(&self, conn: Arc<Connection>) {
-        // 连接归还意味着不再 active
-        if let Some(stats) = &self.stats_collector {
-            stats.increment_current_active_connections(-1);
+        // 归还：从 active -> idle（避免重复扣减 active 统计）
+        let was_in_use = conn.is_in_use();
+        conn.mark_idle();
+        if was_in_use {
+            self.active_count.fetch_sub(1, Ordering::Relaxed);
+            if let Some(stats) = &self.stats_collector {
+                stats.increment_current_active_connections(-1);
+            }
+            self.wait_cv.notify_all();
         }
 
         if self.is_closed() {
             let _ = self.remove_connection(&conn);
             return;
         }
-
-        // 标记为空闲，方便后续 idle/泄漏/超时判断
-        conn.mark_idle();
 
         if !self.is_connection_valid_for_borrow(&conn) {
             let _ = self.remove_connection(&conn);
@@ -776,10 +820,12 @@ impl PoolInner {
     fn remove_connection(&self, conn: &Arc<Connection>) -> Result<()> {
         // 如果在关闭/清理过程中强制移除使用中的连接，修正 active 统计
         if conn.is_in_use() {
+            conn.mark_idle();
+            self.active_count.fetch_sub(1, Ordering::Relaxed);
             if let Some(stats) = &self.stats_collector {
                 stats.increment_current_active_connections(-1);
             }
-            conn.mark_idle();
+            self.wait_cv.notify_all();
         }
 
         // 如果它仍在 idle 列表里，先移除（并同步 idle 统计）
