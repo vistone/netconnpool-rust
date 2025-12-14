@@ -228,13 +228,17 @@ impl Config {
             PoolMode::Client => {
                 // 客户端模式需要Dialer
                 if self.dialer.is_none() {
-                    return Err(NetConnPoolError::InvalidConfig);
+                    return Err(NetConnPoolError::InvalidConfig {
+                        reason: "客户端模式需要 Dialer".to_string(),
+                    });
                 }
             }
             PoolMode::Server => {
                 // 服务器端模式需要Listener
                 if self.listener.is_none() {
-                    return Err(NetConnPoolError::InvalidConfig);
+                    return Err(NetConnPoolError::InvalidConfig {
+                        reason: "服务器端模式需要 Listener".to_string(),
+                    });
                 }
             }
         }
@@ -243,13 +247,53 @@ impl Config {
             && self.max_connections > 0
             && self.min_connections > self.max_connections
         {
-            return Err(NetConnPoolError::InvalidConfig);
+            return Err(NetConnPoolError::InvalidConfig {
+                reason: format!(
+                    "min_connections ({}) 不能大于 max_connections ({})",
+                    self.min_connections, self.max_connections
+                ),
+            });
         }
         if self.max_idle_connections == 0 {
-            return Err(NetConnPoolError::InvalidConfig);
+            return Err(NetConnPoolError::InvalidConfig {
+                reason: "max_idle_connections 必须大于 0".to_string(),
+            });
         }
         if self.connection_timeout.is_zero() {
-            return Err(NetConnPoolError::InvalidConfig);
+            return Err(NetConnPoolError::InvalidConfig {
+                reason: "connection_timeout 必须大于 0".to_string(),
+            });
+        }
+        
+        // 添加更多验证
+        if self.max_idle_connections > 0
+            && self.max_connections > 0
+            && self.max_idle_connections > self.max_connections
+        {
+            return Err(NetConnPoolError::InvalidConfig {
+                reason: format!(
+                    "max_idle_connections ({}) 不能大于 max_connections ({})",
+                    self.max_idle_connections, self.max_connections
+                ),
+            });
+        }
+        
+        if self.idle_timeout > self.max_lifetime {
+            return Err(NetConnPoolError::InvalidConfig {
+                reason: format!(
+                    "idle_timeout ({:?}) 不能大于 max_lifetime ({:?})",
+                    self.idle_timeout, self.max_lifetime
+                ),
+            });
+        }
+        
+        if self.health_check_timeout > self.health_check_interval {
+            return Err(NetConnPoolError::InvalidConfig {
+                reason: format!(
+                    "health_check_timeout ({:?}) 不能大于 health_check_interval ({:?})",
+                    self.health_check_timeout, self.health_check_interval
+                ),
+            });
         }
         Ok(())
     }

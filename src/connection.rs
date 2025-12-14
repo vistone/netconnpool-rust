@@ -207,8 +207,11 @@ impl Connection {
         if interval.is_zero() {
             return false;
         }
-        let last = *self.last_health_check_at.lock().unwrap();
-        Instant::now().duration_since(last) >= interval
+        if let Ok(last) = self.last_health_check_at.lock() {
+            Instant::now().duration_since(*last) >= interval
+        } else {
+            true // 如果获取锁失败，返回 true 以触发健康检查
+        }
     }
 
     /// report_leak_once 返回是否是首次上报泄漏
@@ -232,8 +235,11 @@ impl Connection {
         if self.in_use.load(Ordering::Acquire) {
             return false;
         }
-        let last_used = *self.last_used_at.lock().unwrap();
-        Instant::now().duration_since(last_used) > idle_timeout
+        if let Ok(last_used) = self.last_used_at.lock() {
+            Instant::now().duration_since(*last_used) > idle_timeout
+        } else {
+            false // 如果获取锁失败，返回 false（不认为过期）
+        }
     }
 
     /// IsLeaked 检查连接是否泄漏（超过ConnectionLeakTimeout且仍在使用时）
@@ -241,8 +247,11 @@ impl Connection {
         if leak_timeout.is_zero() || !self.in_use.load(Ordering::Acquire) {
             return false;
         }
-        let last_used = *self.last_used_at.lock().unwrap();
-        Instant::now().duration_since(last_used) > leak_timeout
+        if let Ok(last_used) = self.last_used_at.lock() {
+            Instant::now().duration_since(*last_used) > leak_timeout
+        } else {
+            false // 如果获取锁失败，返回 false（不认为泄漏）
+        }
     }
 
     /// Close 关闭连接
@@ -279,8 +288,11 @@ impl Connection {
         if self.in_use.load(Ordering::Acquire) {
             return Duration::ZERO;
         }
-        let last_used = *self.last_used_at.lock().unwrap();
-        Instant::now().duration_since(last_used)
+        if let Ok(last_used) = self.last_used_at.lock() {
+            Instant::now().duration_since(*last_used)
+        } else {
+            Duration::ZERO // 如果获取锁失败，返回零时长
+        }
     }
 
     /// IncrementReuseCount 增加复用次数

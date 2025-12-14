@@ -377,7 +377,9 @@ impl StatsCollector {
                 self.stats.average_get_time.load(Ordering::Relaxed),
             ),
             total_get_time: Duration::from_nanos(self.stats.total_get_time.load(Ordering::Relaxed)),
-            last_update_time: *self.last_update_time.read().unwrap(),
+            last_update_time: self.last_update_time.read()
+                .map(|guard| *guard)
+                .unwrap_or_else(|_| Instant::now()),
         }
     }
 
