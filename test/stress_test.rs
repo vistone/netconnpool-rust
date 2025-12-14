@@ -282,9 +282,11 @@ fn test_connection_pool_exhaustion() {
 
     assert_eq!(connections.len(), 10, "应该获取到10个连接");
 
-    // 尝试获取第11个连接，应该失败或超时
+    // 尝试获取第11个连接：
+    // - 连接池实现现在会在 timeout 内等待归还（不会自旋、也不会过早失败）
+    // - 如果需要“快速失败”语义，请显式传入 timeout=0
     let start = Instant::now();
-    let result = pool.get();
+    let result = pool.get_with_timeout(Duration::ZERO);
     let elapsed = start.elapsed();
 
     assert!(result.is_err(), "连接池耗尽时应该返回错误");

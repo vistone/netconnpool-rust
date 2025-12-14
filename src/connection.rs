@@ -6,7 +6,7 @@ use crate::ipversion::{detect_ip_version, IPVersion};
 use crate::protocol::Protocol;
 use std::net::{TcpStream, UdpSocket};
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 static CONNECTION_ID_GENERATOR: AtomicU64 = AtomicU64::new(1);
@@ -33,25 +33,25 @@ pub struct Connection {
     created_at: Instant,
 
     /// LastUsedAt 最后使用时间
-    last_used_at: Arc<std::sync::Mutex<Instant>>,
+    last_used_at: Mutex<Instant>,
 
     /// LastHealthCheckAt 最后健康检查时间
-    last_health_check_at: Arc<std::sync::Mutex<Instant>>,
+    last_health_check_at: Mutex<Instant>,
 
     /// IsHealthy 是否健康
-    is_healthy: Arc<AtomicBool>,
+    is_healthy: AtomicBool,
 
     /// Closed 是否已关闭（用于 close 幂等）
-    closed: Arc<AtomicBool>,
+    closed: AtomicBool,
 
     /// InUse 是否正在使用中
-    in_use: Arc<AtomicBool>,
+    in_use: AtomicBool,
 
     /// ReuseCount 连接复用次数
-    reuse_count: Arc<AtomicI64>,
+    reuse_count: AtomicI64,
 
     /// leak_reported 是否已上报过泄漏（避免重复计数）
-    leak_reported: Arc<AtomicBool>,
+    leak_reported: AtomicBool,
 
     /// on_close 关闭回调
     on_close: Option<Box<OnCloseCallback>>,
@@ -98,13 +98,13 @@ impl Connection {
             protocol,
             ip_version,
             created_at: now,
-            last_used_at: Arc::new(std::sync::Mutex::new(now)),
-            last_health_check_at: Arc::new(std::sync::Mutex::new(now)),
-            is_healthy: Arc::new(AtomicBool::new(true)),
-            closed: Arc::new(AtomicBool::new(false)),
-            in_use: Arc::new(AtomicBool::new(false)),
-            reuse_count: Arc::new(AtomicI64::new(0)),
-            leak_reported: Arc::new(AtomicBool::new(false)),
+            last_used_at: Mutex::new(now),
+            last_health_check_at: Mutex::new(now),
+            is_healthy: AtomicBool::new(true),
+            closed: AtomicBool::new(false),
+            in_use: AtomicBool::new(false),
+            reuse_count: AtomicI64::new(0),
+            leak_reported: AtomicBool::new(false),
             on_close,
         }
     }
@@ -153,19 +153,22 @@ impl Connection {
     /// MarkInUse 标记为使用中
     pub fn mark_in_use(&self) {
         self.in_use.store(true, Ordering::Release);
-        *self.last_used_at.lock().unwrap() = Instant::now();
+        *self.last_used_at.lock().unwrap_or_else(|e| e.into_inner()) = Instant::now();
     }
 
     /// MarkIdle 标记为空闲
     pub fn mark_idle(&self) {
         self.in_use.store(false, Ordering::Release);
-        *self.last_used_at.lock().unwrap() = Instant::now();
+        *self.last_used_at.lock().unwrap_or_else(|e| e.into_inner()) = Instant::now();
     }
 
     /// UpdateHealth 更新健康状态
     pub fn update_health(&self, healthy: bool) {
         self.is_healthy.store(healthy, Ordering::Release);
-        *self.last_health_check_at.lock().unwrap() = Instant::now();
+        *self
+            .last_health_check_at
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = Instant::now();
     }
 
     /// mark_unhealthy 仅标记为不健康（不主动关闭）
@@ -178,11 +181,11 @@ impl Connection {
         if interval.is_zero() {
             return false;
         }
-        if let Ok(last) = self.last_health_check_at.lock() {
-            Instant::now().duration_since(*last) >= interval
-        } else {
-            true // 如果获取锁失败，返回 true 以触发健康检查
-        }
+        let last = self
+            .last_health_check_at
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        Instant::now().duration_since(*last) >= interval
     }
 
     /// report_leak_once 返回是否是首次上报泄漏
@@ -206,11 +209,8 @@ impl Connection {
         if self.in_use.load(Ordering::Acquire) {
             return false;
         }
-        if let Ok(last_used) = self.last_used_at.lock() {
-            Instant::now().duration_since(*last_used) > idle_timeout
-        } else {
-            false // 如果获取锁失败，返回 false（不认为过期）
-        }
+        let last_used = self.last_used_at.lock().unwrap_or_else(|e| e.into_inner());
+        Instant::now().duration_since(*last_used) > idle_timeout
     }
 
     /// IsLeaked 检查连接是否泄漏（超过ConnectionLeakTimeout且仍在使用时）
@@ -218,11 +218,8 @@ impl Connection {
         if leak_timeout.is_zero() || !self.in_use.load(Ordering::Acquire) {
             return false;
         }
-        if let Ok(last_used) = self.last_used_at.lock() {
-            Instant::now().duration_since(*last_used) > leak_timeout
-        } else {
-            false // 如果获取锁失败，返回 false（不认为泄漏）
-        }
+        let last_used = self.last_used_at.lock().unwrap_or_else(|e| e.into_inner());
+        Instant::now().duration_since(*last_used) > leak_timeout
     }
 
     /// Close 关闭连接
@@ -259,11 +256,8 @@ impl Connection {
         if self.in_use.load(Ordering::Acquire) {
             return Duration::ZERO;
         }
-        if let Ok(last_used) = self.last_used_at.lock() {
-            Instant::now().duration_since(*last_used)
-        } else {
-            Duration::ZERO // 如果获取锁失败，返回零时长
-        }
+        let last_used = self.last_used_at.lock().unwrap_or_else(|e| e.into_inner());
+        Instant::now().duration_since(*last_used)
     }
 
     /// IncrementReuseCount 增加复用次数

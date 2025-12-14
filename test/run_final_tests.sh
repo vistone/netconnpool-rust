@@ -8,7 +8,8 @@ echo "NetConnPool Rust 最终测试验证"
 echo "=========================================="
 echo ""
 
-cd /home/stone/netconnpool-rust
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
 
 # 颜色定义
 GREEN='\033[0;32m'

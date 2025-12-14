@@ -26,8 +26,12 @@ run_test_suite() {
     echo -e "${YELLOW}运行测试套件: ${suite_name}${NC}"
     
     if timeout $timeout bash -c "$test_command" > /tmp/test_${suite_name}_$$.log 2>&1; then
-        local passed=$(grep -c "test result: ok" /tmp/test_${suite_name}_$$.log 2>/dev/null || echo "0")
-        local failed=$(grep -c "test result: FAILED" /tmp/test_${suite_name}_$$.log 2>/dev/null || echo "0")
+        local passed
+        local failed
+        passed=$(grep -c "test result: ok" /tmp/test_${suite_name}_$$.log 2>/dev/null || true)
+        failed=$(grep -c "test result: FAILED" /tmp/test_${suite_name}_$$.log 2>/dev/null || true)
+        passed=${passed:-0}
+        failed=${failed:-0}
         
         if [ "$failed" -gt 0 ]; then
             echo -e "${RED}✗ ${suite_name} 有失败的测试${NC}"
@@ -47,26 +51,27 @@ run_test_suite() {
     fi
 }
 
-cd /home/stone/netconnpool-rust
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
 
 # 1. 单元测试
-run_test_suite "单元测试" "cd /home/stone/netconnpool-rust && cargo test --lib" 60
+run_test_suite "单元测试" "cd \"$ROOT_DIR\" && cargo test --lib" 60
 
 # 2. 统计模块单元测试
-run_test_suite "统计模块单元测试" "cd /home/stone/netconnpool-rust && cargo test --test stats_test" 60
+run_test_suite "统计模块单元测试" "cd \"$ROOT_DIR\" && cargo test --test stats_test" 60
 
 # 3. 集成测试
-run_test_suite "集成测试" "cd /home/stone/netconnpool-rust && cargo test --test integration_test -- --ignored" 120
+run_test_suite "集成测试" "cd \"$ROOT_DIR\" && cargo test --test integration_test -- --ignored" 120
 
 # 4. 压力测试（快速版本）
-run_test_suite "压力测试-连接池耗尽" "cd /home/stone/netconnpool-rust && cargo test --test stress_test test_connection_pool_exhaustion -- --ignored" 60
-run_test_suite "压力测试-快速获取释放" "cd /home/stone/netconnpool-rust && cargo test --test stress_test test_rapid_acquire_release -- --ignored" 60
+run_test_suite "压力测试-连接池耗尽" "cd \"$ROOT_DIR\" && cargo test --test stress_test test_connection_pool_exhaustion -- --ignored" 60
+run_test_suite "压力测试-快速获取释放" "cd \"$ROOT_DIR\" && cargo test --test stress_test test_rapid_acquire_release -- --ignored" 60
 
 # 5. 统计模块竞争条件测试
-run_test_suite "统计模块竞争条件测试" "cd /home/stone/netconnpool-rust && cargo test --test stats_race_test -- --ignored" 60
+run_test_suite "统计模块竞争条件测试" "cd \"$ROOT_DIR\" && cargo test --test stats_race_test -- --ignored" 60
 
 # 6. 性能基准测试（快速版本，跳过长时间运行的测试）
-run_test_suite "性能基准测试" "cd /home/stone/netconnpool-rust && cargo test --test benchmark_test benchmark_stats_collection benchmark_connection_creation -- --ignored" 120
+run_test_suite "性能基准测试" "cd \"$ROOT_DIR\" && cargo test --test benchmark_test benchmark_stats_collection -- --ignored && cargo test --test benchmark_test benchmark_connection_creation -- --ignored" 120
 
 # 清理临时文件
 rm -f /tmp/test_*_$$.log
