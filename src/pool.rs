@@ -201,21 +201,21 @@ impl Pool {
     /// - `Err(NetConnPoolError)`: 获取失败（超时、池已关闭、连接池耗尽等）
     ///
     /// # 示例
-    /// ```rust,no_run,no_run
-/// // 假设已创建连接池
-/// // let conn = pool.get().unwrap();
-/// // // 使用连接...
-/// // drop(conn); // 自动归还
-/// config.dialer = Some(Box::new(|_| {
-///     TcpStream::connect("127.0.0.1:8080")
-///         .map(|s| ConnectionType::Tcp(s))
-///         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
-/// }));
-///
-/// let pool = Pool::new(config).unwrap();
-/// let conn = pool.get().unwrap();
-/// // 使用连接...
-/// drop(conn); // 自动归还
+    /// ```rust,no_run
+    /// use netconnpool::*;
+    /// use std::net::TcpStream;
+    ///
+    /// let mut config = default_config();
+    /// config.dialer = Some(Box::new(|_| {
+    ///     TcpStream::connect("127.0.0.1:8080")
+    ///         .map(|s| ConnectionType::Tcp(s))
+    ///         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+    /// }));
+    ///
+    /// let pool = Pool::new(config).unwrap();
+    /// let conn = pool.get().unwrap();
+    /// // 使用连接...
+    /// drop(conn); // 自动归还
     /// ```
     pub fn get(&self) -> Result<PooledConnection> {
         self.get_with_timeout(self.inner.config.get_connection_timeout)
