@@ -20,6 +20,9 @@ Thumbs.db
 *.dylib
 *.dll
 *.exe
+/bin/
+core
+*.core
 
 # 测试相关
 *.log

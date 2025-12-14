@@ -164,24 +164,39 @@ cargo test --lib test_pool_creation
 ## 项目结构
 
 ```
-netconnpool/
+netconnpool-rust/
 ├── src/                    # 源代码
+│   ├── lib.rs             # 库入口，导出所有公共 API
 │   ├── config.rs          # 配置结构和验证
 │   ├── connection.rs      # 连接封装和生命周期管理
 │   ├── errors.rs          # 错误定义
 │   ├── health.rs          # 健康检查管理器
-│   ├── ipversion.rs        # IP 版本检测
-│   ├── leak.rs            # 连接泄露检测器
-│   ├── mode.rs            # 连接池模式定义
-│   ├── pool.rs            # 核心连接池实现
-│   ├── protocol.rs        # 协议类型检测
-│   ├── stats.rs           # 统计信息收集器
-│   └── udp_utils.rs        # UDP 工具函数
-├── test/                  # 测试文件
+│   ├── ipversion.rs       # IP 版本检测
+│   ├── leak.rs           # 连接泄露检测器
+│   ├── mode.rs           # 连接池模式定义
+│   ├── pool.rs           # 核心连接池实现
+│   ├── protocol.rs       # 协议类型检测
+│   ├── stats.rs          # 统计信息收集器
+│   └── udp_utils.rs      # UDP 工具函数
+├── test/                  # 测试文件（详见 test/README.md）
+│   ├── 单元测试/         # pool_test.rs, mode_test.rs 等
+│   ├── 集成测试/         # integration_test.rs
+│   ├── 压力测试/         # stress_test.rs
+│   ├── 性能测试/         # benchmark_test.rs, performance_test.rs
+│   └── 测试脚本/         # run_*.sh
 ├── examples/              # 示例代码
-├── docs/                  # 文档
+│   ├── basic_example.rs   # 基本使用示例
+│   ├── client_stress.rs  # 客户端压力测试示例
+│   └── server_example.rs # 服务器端示例
+├── docs/                  # 文档（详见 docs/INDEX.md）
+│   ├── INDEX.md          # 文档索引
+│   ├── STRUCTURE.md      # 项目结构说明
+│   ├── TEST_REPORT.md    # 测试报告
+│   └── ...              # 其他文档
 └── Cargo.toml            # 项目配置
 ```
+
+详细的项目结构说明请参考 [docs/STRUCTURE.md](docs/STRUCTURE.md)
 
 ## 版本
 
@@ -198,6 +213,14 @@ BSD-3-Clause License
 ## 贡献
 
 欢迎提交 Issue 和 Pull Request！
+
+## 文档
+
+- **[文档索引](docs/INDEX.md)** - 所有文档的索引和导航
+- **[项目结构](docs/STRUCTURE.md)** - 详细的代码组织结构
+- **[变更日志](docs/CHANGELOG.md)** - 版本变更历史
+- **[测试报告](docs/TEST_REPORT.md)** - 全面测试结果
+- **[测试指南](test/README.md)** - 如何运行和编写测试
 
 ## 更新日志
 

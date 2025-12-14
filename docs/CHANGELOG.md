@@ -5,6 +5,21 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.0] - 2025-12-14
+
+### 修复
+- 修复 `stats_test.rs` 作为集成测试的配置问题
+- 修复 `test_stats_get_stats_consistency` 测试中的断言过于严格的问题
+- 优化 `test_stats_long_running` 测试的输出频率
+
+### 文档
+- 添加文档索引 (docs/INDEX.md)
+- 更新项目结构文档，反映完整的项目结构
+- 更新 README.md，添加文档链接
+- 更新所有文档中的 API 说明，使其与实际代码一致
+
+---
+
 ## [1.0.0] - 2025-12-13
 
 ### 新增
@@ -30,28 +45,34 @@
 - 🔄 智能空闲池：TCP/UDP 独立空闲池
 
 ### API
-所有函数名与原 Go 版本保持一致：
-- `NewPool` - 创建新的连接池
-- `Get` - 获取一个连接（自动选择IP版本）
-- `GetIPv4` - 获取一个IPv4连接
-- `GetIPv6` - 获取一个IPv6连接
-- `GetTCP` - 获取一个TCP连接
-- `GetUDP` - 获取一个UDP连接
-- `GetWithProtocol` - 获取指定协议的连接
-- `GetWithIPVersion` - 获取指定IP版本的连接
-- `GetWithTimeout` - 获取一个连接（带超时）
-- `Put` - 归还连接
-- `Close` - 关闭连接池
-- `Stats` - 获取统计信息
+主要 API（Rust 风格 snake_case）：
+- `Pool::new` - 创建新的连接池
+- `Pool::get` - 获取一个连接（自动选择IP版本）
+- `Pool::get_ipv4` / `Pool::get_ipv6` - 获取指定 IP 版本连接
+- `Pool::get_tcp` / `Pool::get_udp` - 获取指定协议连接
+- `Pool::get_with_protocol` - 获取指定协议连接（可自定义超时）
+- `Pool::get_with_ip_version` - 获取指定 IP 版本连接（可自定义超时）
+- `Pool::get_with_timeout` - 获取连接（带超时）
+- `Pool::close` - 关闭连接池
+- `Pool::stats` - 获取统计信息
+
+**注意**: 连接归还采用 RAII 机制，`PooledConnection` 在 `drop` 时自动归还到池中，无需手动调用 `Put` 方法。
 
 ### 测试
 - 9个单元测试全部通过
+- 2个统计模块单元测试全部通过
+- 3个集成测试全部通过
 - 8个压力测试场景
+- 11个统计模块压力测试
+- 4个统计模块竞争条件测试
 - 4个性能基准测试
-- 3个集成测试场景
 
 ### 文档
 - 完整的 README.md
-- 项目结构文档
-- 压力测试指南
-- 测试说明文档
+- 项目结构文档 (docs/STRUCTURE.md)
+- 文档索引 (docs/INDEX.md)
+- 全面测试报告 (docs/TEST_REPORT.md)
+- 测试总结 (docs/TEST_SUMMARY.md)
+- 压力测试指南 (docs/STRESS_TEST_GUIDE.md)
+- 性能测试指南 (docs/PERFORMANCE_TEST_GUIDE.md)
+- 测试说明文档 (test/README.md)

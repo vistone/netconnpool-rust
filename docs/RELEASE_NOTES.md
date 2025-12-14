@@ -30,36 +30,53 @@ netconnpool = "1.0.0"
 
 ```rust
 use netconnpool::*;
-use netconnpool::config::{DefaultConfig, ConnectionType};
 use std::net::TcpStream;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut config = DefaultConfig();
-    config.Dialer = Some(Box::new(|| {
+    // 创建客户端连接池配置
+    let mut config = default_config();
+    config.dialer = Some(Box::new(|_protocol| {
         TcpStream::connect("127.0.0.1:8080")
             .map(|s| ConnectionType::Tcp(s))
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }));
     
-    let pool = Pool::NewPool(config)?;
-    let conn = pool.Get()?;
-    // 使用连接...
-    pool.Put(conn)?;
-    pool.Close()?;
+    // 创建连接池
+    let pool = Pool::new(config)?;
+    
+    // 获取连接
+    let conn = pool.get()?;
+    
+    // 使用连接进行网络操作
+    if let Some(tcp_stream) = conn.tcp_conn() {
+        // ... 使用连接 ...
+    }
+    
+    // 归还连接：RAII 自动归还（drop 即可）
+    drop(conn);
+    
+    // 关闭连接池
+    pool.close()?;
+    
     Ok(())
 }
 ```
 
 ### 📚 API 文档
 
-所有函数名与原 Go 版本保持一致：
+主要 API（Rust 风格 snake_case）：
 
-- `NewPool` - 创建新的连接池
-- `Get` / `GetIPv4` / `GetIPv6` / `GetTCP` / `GetUDP` - 获取连接
-- `GetWithProtocol` / `GetWithIPVersion` / `GetWithTimeout` - 高级获取方法
-- `Put` - 归还连接
-- `Close` - 关闭连接池
-- `Stats` - 获取统计信息
+- `Pool::new` - 创建新的连接池
+- `Pool::get` - 获取一个连接（自动选择IP版本）
+- `Pool::get_ipv4` / `Pool::get_ipv6` - 获取指定 IP 版本连接
+- `Pool::get_tcp` / `Pool::get_udp` - 获取指定协议连接
+- `Pool::get_with_protocol` - 获取指定协议连接（可自定义超时）
+- `Pool::get_with_ip_version` - 获取指定 IP 版本连接（可自定义超时）
+- `Pool::get_with_timeout` - 获取连接（带超时）
+- `Pool::close` - 关闭连接池
+- `Pool::stats` - 获取统计信息
+
+**注意**: 连接归还采用 RAII 机制，`PooledConnection` 在 `drop` 时自动归还到池中，无需手动调用 `Put` 方法。
 
 ### 🧪 测试
 

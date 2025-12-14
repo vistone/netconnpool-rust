@@ -1,36 +1,80 @@
 # 项目结构说明
 
 ```
-netconnpool/
-├── src/                    # 源代码目录
-│   ├── lib.rs             # 库入口，导出所有公共 API
-│   ├── config.rs          # 配置结构和验证
-│   ├── connection.rs      # 连接封装和生命周期管理
-│   ├── errors.rs          # 错误定义
-│   ├── health.rs          # 健康检查管理器（占位）
-│   ├── ipversion.rs       # IP 版本检测
-│   ├── leak.rs            # 连接泄露检测器（占位）
-│   ├── mode.rs            # 连接池模式定义
-│   ├── pool.rs            # 核心连接池实现
-│   ├── protocol.rs        # 协议类型检测
-│   ├── stats.rs           # 统计信息收集器
-│   └── udp_utils.rs        # UDP 工具函数
+netconnpool-rust/
+├── src/                           # 源代码目录
+│   ├── lib.rs                    # 库入口，导出所有公共 API
+│   ├── config.rs                 # 配置结构和验证
+│   ├── connection.rs             # 连接封装和生命周期管理
+│   ├── errors.rs                 # 错误定义
+│   ├── health.rs                 # 健康检查管理器
+│   ├── ipversion.rs              # IP 版本检测
+│   ├── leak.rs                   # 连接泄露检测器
+│   ├── mode.rs                   # 连接池模式定义
+│   ├── pool.rs                   # 核心连接池实现
+│   ├── protocol.rs               # 协议类型检测
+│   ├── stats.rs                  # 统计信息收集器
+│   └── udp_utils.rs              # UDP 工具函数
 │
-├── test/                  # 测试文件目录
-│   ├── pool_test.rs       # 连接池测试
-│   ├── mode_test.rs       # 模式测试
-│   ├── protocol_test.rs   # 协议测试
-│   ├── ipversion_test.rs  # IP版本测试
-│   └── stats_test.rs      # 统计测试
+├── test/                          # 测试文件目录
+│   ├── README.md                 # 测试说明文档
+│   │
+│   ├── 单元测试/
+│   │   ├── pool_test.rs         # 连接池基本功能测试
+│   │   ├── mode_test.rs         # 模式定义测试
+│   │   ├── protocol_test.rs      # 协议类型测试
+│   │   ├── ipversion_test.rs    # IP版本测试
+│   │   └── stats_test.rs        # 统计信息测试
+│   │
+│   ├── 集成测试/
+│   │   └── integration_test.rs  # 集成测试
+│   │
+│   ├── 压力测试/
+│   │   └── stress_test.rs       # 压力测试套件
+│   │
+│   ├── 性能测试/
+│   │   ├── benchmark_test.rs    # 性能基准测试
+│   │   ├── performance_test.rs  # 性能测试
+│   │   └── performance_report.rs # 性能报告
+│   │
+│   ├── 统计模块专项测试/
+│   │   ├── stats_stress_test.rs # 统计模块压力测试
+│   │   └── stats_race_test.rs   # 统计模块竞争条件测试
+│   │
+│   └── 测试脚本/
+│       ├── run_stress_tests.sh      # 运行压力测试
+│       ├── run_performance_tests.sh # 运行性能测试
+│       ├── run_comprehensive_tests.sh # 综合测试脚本
+│       └── run_final_tests.sh       # 最终测试验证脚本
 │
-├── examples/              # 示例代码目录
-│   └── basic_example.rs   # 基本使用示例
+├── examples/                      # 示例代码目录
+│   ├── basic_example.rs          # 基本使用示例
+│   ├── client_stress.rs         # 客户端压力测试示例
+│   └── server_example.rs        # 服务器端示例
 │
-├── docs/                  # 文档目录
-│   └── STRUCTURE.md       # 项目结构说明（本文件）
+├── docs/                          # 文档目录
+│   ├── INDEX.md                  # 文档索引（本目录）
+│   ├── STRUCTURE.md              # 项目结构说明（本文件）
+│   ├── CHANGELOG.md              # 变更日志
+│   ├── RELEASE_NOTES.md          # 版本发布说明
+│   │
+│   ├── TEST_REPORT.md            # 全面测试报告
+│   ├── TEST_SUMMARY.md           # 测试总结
+│   ├── PERFORMANCE_TEST_GUIDE.md  # 性能测试指南
+│   ├── STRESS_TEST_GUIDE.md      # 压力测试指南
+│   ├── STRESS_TEST_COMPLETE.md   # 压力测试完成报告
+│   │
+│   ├── CODE_REVIEW.md            # 代码审查记录
+│   └── STATS_SECURITY_AUDIT.md   # 统计模块安全审计
 │
-├── Cargo.toml            # Rust 项目配置文件
-└── README.md             # 项目说明文档
+├── .github/                       # GitHub 配置
+│   └── workflows/
+│       └── rust.yml              # CI/CD 工作流
+│
+├── Cargo.toml                    # Rust 项目配置文件
+├── Cargo.lock                    # 依赖锁定文件（自动生成）
+├── .gitignore                    # Git 忽略文件配置
+└── README.md                     # 项目主文档
 ```
 
 ## 核心文件说明
