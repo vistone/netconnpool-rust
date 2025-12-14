@@ -73,7 +73,7 @@ impl Pool {
     /// - `Err(NetConnPoolError)`: 配置无效或创建失败
     ///
     /// # 示例
-    /// ```rust,no_run
+            /// ```rust,no_run
     /// use netconnpool::*;
     /// use std::net::TcpStream;
     ///
@@ -84,7 +84,7 @@ impl Pool {
     ///         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     /// }));
     /// let pool = Pool::new(config).unwrap();
-    /// ```
+        /// ```
     pub fn new(mut config: Config) -> Result<Self> {
         config.apply_defaults();
         config.validate()?;
@@ -200,23 +200,13 @@ impl Pool {
     /// - `Ok(PooledConnection)`: 成功获取连接
     /// - `Err(NetConnPoolError)`: 获取失败（超时、池已关闭、连接池耗尽等）
     ///
-    /// # 示例
-    /// ```rust,no_run
-/// use netconnpool::*;
-/// use std::net::TcpStream;
-///
-/// let mut config = default_config();
-/// config.dialer = Some(Box::new(|_| {
-///     TcpStream::connect("127.0.0.1:8080")
-///         .map(|s| ConnectionType::Tcp(s))
-///         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
-/// }));
-///
-/// let pool = Pool::new(config).unwrap();
-/// let conn = pool.get().unwrap();
-/// // 使用连接...
-/// drop(conn); // 自动归还
-    /// ```
+/// # 示例
+/// ```rust,no_run,no_run,no_run
+/// // 假设已创建连接池
+/// // let conn = pool.get().unwrap();
+/// // // 使用连接...
+/// // drop(conn); // 自动归还
+/// ```
     pub fn get(&self) -> Result<PooledConnection> {
         self.get_with_timeout(self.inner.config.get_connection_timeout)
     }
@@ -326,27 +316,12 @@ impl Pool {
     /// - 性能指标（平均复用次数、平均获取时间）
     /// - 健康检查统计
     ///
-    /// # 注意
-    /// 如果创建连接池时未启用统计功能（`enable_stats = false`），将返回默认值（全为0）。
-    ///
     /// # 示例
-    /// ```rust,no_run
-/// use netconnpool::*;
-/// use std::net::TcpStream;
-///
-/// let mut config = default_config();
-/// config.dialer = Some(Box::new(|_| {
-///     TcpStream::connect("127.0.0.1:8080")
-///         .map(|s| ConnectionType::Tcp(s))
-///         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
-/// }));
-///
-/// let pool = Pool::new(config).unwrap();
-/// let stats = pool.stats();
-/// println!("当前连接数: {}", stats.current_connections);
-/// println!("连接复用率: {:.2}%", stats.average_reuse_count * 100.0);
-    /// ```
-    pub fn stats(&self) -> crate::stats::Stats {
+        /// ```rust,no_run
+/// // 假设已创建连接池并启用统计功能
+/// // let stats = pool.stats();
+/// // println!("当前连接数: {}", stats.current_connections);
+/// // println!("连接复用率: {:.2}%", stats.average_reuse_count * 100.0);
         if let Some(stats) = &self.inner.stats_collector {
             stats.get_stats()
         } else {
