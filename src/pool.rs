@@ -73,10 +73,11 @@ impl Pool {
     /// - `Err(NetConnPoolError)`: 配置无效或创建失败
     ///
     /// # 示例
-    /// ```rust
+    /// ```rust,no_run
     /// use netconnpool::*;
     /// use std::net::TcpStream;
     ///
+    /// # fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     /// let mut config = default_config();
     /// config.dialer = Some(Box::new(|_| {
     ///     TcpStream::connect("127.0.0.1:8080")
@@ -84,6 +85,8 @@ impl Pool {
     ///         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     /// }));
     /// let pool = Pool::new(config)?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn new(mut config: Config) -> Result<Self> {
         config.apply_defaults();
@@ -201,10 +204,14 @@ impl Pool {
     /// - `Err(NetConnPoolError)`: 获取失败（超时、池已关闭、连接池耗尽等）
     ///
     /// # 示例
-    /// ```rust
+    /// ```rust,no_run
+    /// # use netconnpool::*;
+    /// # fn example(pool: &Pool) -> std::result::Result<(), NetConnPoolError> {
     /// let conn = pool.get()?;
     /// // 使用连接...
     /// drop(conn); // 自动归还
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn get(&self) -> Result<PooledConnection> {
         self.get_with_timeout(self.inner.config.get_connection_timeout)
@@ -319,10 +326,13 @@ impl Pool {
     /// 如果创建连接池时未启用统计功能（`enable_stats = false`），将返回默认值（全为0）。
     ///
     /// # 示例
-    /// ```rust
+    /// ```rust,no_run
+    /// # use netconnpool::*;
+    /// # fn example(pool: &Pool) {
     /// let stats = pool.stats();
     /// println!("当前连接数: {}", stats.current_connections);
     /// println!("连接复用率: {:.2}%", stats.average_reuse_count * 100.0);
+    /// # }
     /// ```
     pub fn stats(&self) -> crate::stats::Stats {
         if let Some(stats) = &self.inner.stats_collector {

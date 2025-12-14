@@ -29,6 +29,8 @@
 
 ### 项目分析文档
 - **[COMPREHENSIVE_ANALYSIS.md](COMPREHENSIVE_ANALYSIS.md)** - 项目全面分析报告（代码质量、测试、文档、性能等）
+- **[IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md)** - 代码改进计划
+- **[IMPROVEMENT_SUMMARY.md](IMPROVEMENT_SUMMARY.md)** - 代码改进总结
 
 ## 🗂️ 文档结构
 
