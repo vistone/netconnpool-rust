@@ -10,11 +10,23 @@ use std::time::Duration;
 /// Dialer 连接创建函数类型（客户端模式）
 /// 返回网络连接和错误
 /// 参数 Option<Protocol> 表示调用方请求的协议，Dialer 应尽量满足
-pub type Dialer = Box<dyn Fn(Option<Protocol>) -> std::result::Result<ConnectionType, Box<dyn std::error::Error + Send + Sync>> + Send + Sync>;
+pub type Dialer = Box<
+    dyn Fn(
+            Option<Protocol>,
+        ) -> std::result::Result<ConnectionType, Box<dyn std::error::Error + Send + Sync>>
+        + Send
+        + Sync,
+>;
 
 /// Acceptor 连接接受函数类型（服务器端模式）
 /// 从Listener接受新连接，返回网络连接和错误
-pub type Acceptor = Box<dyn Fn(&std::net::TcpListener) -> std::result::Result<TcpStream, Box<dyn std::error::Error + Send + Sync>> + Send + Sync>;
+pub type Acceptor = Box<
+    dyn Fn(
+            &std::net::TcpListener,
+        ) -> std::result::Result<TcpStream, Box<dyn std::error::Error + Send + Sync>>
+        + Send
+        + Sync,
+>;
 
 /// HealthChecker 健康检查函数类型
 /// 返回连接是否健康
@@ -83,10 +95,28 @@ pub struct Config {
 
     /// CloseConn 连接关闭函数（可选）
     /// 如果为None，将尝试关闭连接
-    pub close_conn: Option<Box<dyn Fn(&ConnectionType) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync>>,
+    pub close_conn: Option<
+        Box<
+            dyn Fn(
+                    &ConnectionType,
+                )
+                    -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>
+                + Send
+                + Sync,
+        >,
+    >,
 
     /// OnCreated 连接创建后调用
-    pub on_created: Option<Box<dyn Fn(&ConnectionType) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync>>,
+    pub on_created: Option<
+        Box<
+            dyn Fn(
+                    &ConnectionType,
+                )
+                    -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>
+                + Send
+                + Sync,
+        >,
+    >,
 
     /// OnBorrow 连接从池中取出前调用
     pub on_borrow: Option<Box<dyn Fn(&ConnectionType) + Send + Sync>>,
@@ -209,7 +239,10 @@ impl Config {
             }
         }
 
-        if self.min_connections > 0 && self.max_connections > 0 && self.min_connections > self.max_connections {
+        if self.min_connections > 0
+            && self.max_connections > 0
+            && self.min_connections > self.max_connections
+        {
             return Err(NetConnPoolError::InvalidConfig);
         }
         if self.max_idle_connections == 0 {
@@ -226,10 +259,15 @@ impl Config {
         if self.mode == PoolMode::Server && self.acceptor.is_none() {
             self.acceptor = Some(Box::new(default_acceptor));
         }
-        if self.max_idle_connections > 0 && self.max_connections > 0 && self.max_idle_connections > self.max_connections {
+        if self.max_idle_connections > 0
+            && self.max_connections > 0
+            && self.max_idle_connections > self.max_connections
+        {
             self.max_idle_connections = self.max_connections;
         }
-        if !self.health_check_interval.is_zero() && self.health_check_timeout > self.health_check_interval {
+        if !self.health_check_interval.is_zero()
+            && self.health_check_timeout > self.health_check_interval
+        {
             self.health_check_timeout = self.health_check_interval / 2;
         }
         if self.max_buffer_clear_packets == 0 {
@@ -239,6 +277,11 @@ impl Config {
 }
 
 /// default_acceptor 默认的连接接受函数
-fn default_acceptor(listener: &std::net::TcpListener) -> std::result::Result<TcpStream, Box<dyn std::error::Error + Send + Sync>> {
-    listener.accept().map(|(stream, _)| stream).map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+fn default_acceptor(
+    listener: &std::net::TcpListener,
+) -> std::result::Result<TcpStream, Box<dyn std::error::Error + Send + Sync>> {
+    listener
+        .accept()
+        .map(|(stream, _)| stream)
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
 }

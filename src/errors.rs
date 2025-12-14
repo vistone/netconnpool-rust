@@ -1,8 +1,8 @@
 // Copyright (c) 2025, vistone
 // All rights reserved.
 
-use thiserror::Error;
 use std::io;
+use thiserror::Error;
 
 /// 连接池相关错误定义
 #[derive(Error, Debug)]
