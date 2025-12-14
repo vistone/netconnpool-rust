@@ -27,9 +27,14 @@ impl std::fmt::Display for Protocol {
 
 /// detect_protocol 检测连接的协议类型
 /// 支持TCP和UDP连接
-/// 注意：这个函数在实际使用中会通过具体类型来判断，这里提供占位实现
+/// 注意：该函数基于 `Any` 的具体类型进行判断
 pub fn detect_protocol(_conn: &dyn std::any::Any) -> Protocol {
-    // 实际实现会在 connection.rs 中通过具体类型判断
+    if _conn.is::<TcpStream>() {
+        return Protocol::TCP;
+    }
+    if _conn.is::<UdpSocket>() {
+        return Protocol::UDP;
+    }
     Protocol::Unknown
 }
 

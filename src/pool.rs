@@ -58,6 +58,8 @@ struct PoolInner {
     // 空闲连接池，按 (Protocol, IPVersion) 分桶
     // 0: TCP IPv4, 1: TCP IPv6, 2: UDP IPv4, 3: UDP IPv6
     idle_connections: [Mutex<Vec<Arc<Connection>>>; 4],
+    // 全局空闲连接计数（用于实现 max_idle_connections 的全局上限语义）
+    idle_count: AtomicUsize,
     closed: AtomicBool,
     // 当前借出的连接数（不依赖 enable_stats）
     active_count: AtomicUsize,
@@ -109,6 +111,7 @@ impl Pool {
                 Mutex::new(Vec::new()),
                 Mutex::new(Vec::new()),
             ],
+            idle_count: AtomicUsize::new(0),
             closed: AtomicBool::new(false),
             active_count: AtomicUsize::new(0),
             wait_lock: Mutex::new(()),
@@ -365,6 +368,50 @@ impl PoolInner {
         self.closed.load(Ordering::Acquire)
     }
 
+    fn try_reserve_idle_slot(&self) -> bool {
+        // max_idle_connections 在 validate() 中保证 > 0
+        let cap = self.config.max_idle_connections;
+        let mut cur = self.idle_count.load(Ordering::Acquire);
+        loop {
+            if cur >= cap {
+                return false;
+            }
+            match self.idle_count.compare_exchange(
+                cur,
+                cur + 1,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => return true,
+                Err(v) => cur = v,
+            }
+        }
+    }
+
+    fn release_idle_slot(&self) {
+        let mut cur = self.idle_count.load(Ordering::Acquire);
+        loop {
+            if cur == 0 {
+                return;
+            }
+            match self.idle_count.compare_exchange(
+                cur,
+                cur - 1,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => return,
+                Err(v) => cur = v,
+            }
+        }
+    }
+
+    fn release_idle_slots(&self, n: usize) {
+        for _ in 0..n {
+            self.release_idle_slot();
+        }
+    }
+
     fn close(&self) -> Result<()> {
         if self.closed.swap(true, Ordering::SeqCst) {
             return Ok(());
@@ -382,6 +429,8 @@ impl PoolInner {
                 idle_conns.extend(drained);
             }
         }
+        // idle 已被 drain，计数直接归零
+        self.idle_count.store(0, Ordering::Release);
 
         for conn in &idle_conns {
             if let Some(stats) = &self.stats_collector {
@@ -523,6 +572,8 @@ impl PoolInner {
                 };
 
                 if let Some(conn) = conn {
+                    // 从 idle 列表弹出：同步全局 idle 计数
+                    self.release_idle_slot();
                     // 从 idle 移除即应更新 idle 统计（无论最终是否可用）
                     if let Some(stats) = &self.stats_collector {
                         self.update_stats_on_idle_pop(stats, &conn);
@@ -793,23 +844,26 @@ impl PoolInner {
 
         // Put back to idle list
         if let Some(idx) = Self::get_bucket_index(conn.get_protocol(), conn.get_ip_version()) {
-            // 如果获取锁失败，忽略错误（不影响主流程）
-            if let Ok(mut idle) = self.idle_connections[idx].lock() {
-                // Check max idle
-                if idle.len() < self.config.max_idle_connections {
+            // 全局 idle 上限（非 per-bucket）
+            if !self.try_reserve_idle_slot() {
+                let _ = self.remove_connection(&conn);
+                return;
+            }
+
+            // 如果获取锁失败，回滚 idle 计数并移除连接
+            match self.idle_connections[idx].lock() {
+                Ok(mut idle) => {
                     idle.push(conn.clone());
                     drop(idle); // Release lock early
 
                     if let Some(stats) = &self.stats_collector {
                         self.update_stats_on_idle_push(stats, &conn);
                     }
-                } else {
-                    drop(idle);
+                }
+                Err(_) => {
+                    self.release_idle_slot();
                     let _ = self.remove_connection(&conn);
                 }
-            } else {
-                // 锁获取失败，直接移除连接
-                let _ = self.remove_connection(&conn);
             }
         } else {
             // Unknown protocol/ip, cannot pool efficiently. Close it.
@@ -992,20 +1046,23 @@ impl PoolInner {
         conn.mark_idle();
 
         if let Some(idx) = Self::get_bucket_index(conn.get_protocol(), conn.get_ip_version()) {
-            if let Ok(mut idle) = self.idle_connections[idx].lock() {
-                if idle.len() < self.config.max_idle_connections {
+            if !self.try_reserve_idle_slot() {
+                let _ = self.remove_connection(&conn);
+                return;
+            }
+
+            match self.idle_connections[idx].lock() {
+                Ok(mut idle) => {
                     idle.push(conn.clone());
                     drop(idle);
                     if let Some(stats) = &self.stats_collector {
                         self.update_stats_on_idle_push(stats, &conn);
                     }
-                } else {
-                    drop(idle);
+                }
+                Err(_) => {
+                    self.release_idle_slot();
                     let _ = self.remove_connection(&conn);
                 }
-            } else {
-                // 锁获取失败，直接移除连接
-                let _ = self.remove_connection(&conn);
             }
         } else {
             let _ = self.remove_connection(&conn);
@@ -1030,10 +1087,14 @@ impl PoolInner {
                 let after = idle.len();
                 drop(idle);
 
-                if before != after {
+                let removed = before.saturating_sub(after);
+                if removed > 0 {
+                    self.release_idle_slots(removed);
                     if let Some(stats) = &self.stats_collector {
-                        // 从 idle 移除一次
-                        self.update_stats_on_idle_pop(stats, conn);
+                        // 从 idle 移除 removed 次（理论上为 1；多次表示重复残留，仍保持统计一致）
+                        for _ in 0..removed {
+                            self.update_stats_on_idle_pop(stats, conn);
+                        }
                     }
                 }
             }
