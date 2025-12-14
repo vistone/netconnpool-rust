@@ -39,11 +39,11 @@ pub mod stats;
 pub mod udp_utils;
 
 pub use config::{Config, ConnectionType};
-pub use config::{DefaultConfig, DefaultServerConfig};
+pub use config::{default_config, default_server_config};
 pub use connection::Connection;
 pub use errors::*;
-pub use ipversion::{DetectIPVersion, IPVersion, ParseIPVersion};
-pub use mode::{ParsePoolMode, PoolMode};
+pub use ipversion::{detect_ip_version, IPVersion, parse_ip_version};
+pub use mode::{parse_pool_mode, PoolMode};
 pub use pool::Pool;
-pub use protocol::{DetectProtocol, ParseProtocol, Protocol};
+pub use protocol::{detect_protocol, parse_protocol, Protocol};
 pub use stats::{Stats, StatsCollector};

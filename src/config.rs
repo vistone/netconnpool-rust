@@ -29,87 +29,87 @@ pub enum ConnectionType {
 pub struct Config {
     /// Mode 连接池模式：客户端或服务器端
     /// 默认值为PoolModeClient（客户端模式）
-    pub Mode: PoolMode,
+    pub mode: PoolMode,
 
     /// MaxConnections 最大连接数，0表示无限制
-    pub MaxConnections: usize,
+    pub max_connections: usize,
 
     /// MinConnections 最小连接数（预热连接数）
-    pub MinConnections: usize,
+    pub min_connections: usize,
 
     /// MaxIdleConnections 最大空闲连接数
-    pub MaxIdleConnections: usize,
+    pub max_idle_connections: usize,
 
     /// ConnectionTimeout 连接创建超时时间
-    pub ConnectionTimeout: Duration,
+    pub connection_timeout: Duration,
 
     /// IdleTimeout 空闲连接超时时间，超过此时间的空闲连接将被关闭
-    pub IdleTimeout: Duration,
+    pub idle_timeout: Duration,
 
     /// MaxLifetime 连接最大生命周期，超过此时间的连接将被关闭
-    pub MaxLifetime: Duration,
+    pub max_lifetime: Duration,
 
     /// GetConnectionTimeout 获取连接的超时时间
-    pub GetConnectionTimeout: Duration,
+    pub get_connection_timeout: Duration,
 
     /// HealthCheckInterval 健康检查间隔
-    pub HealthCheckInterval: Duration,
+    pub health_check_interval: Duration,
 
     /// HealthCheckTimeout 健康检查超时时间
-    pub HealthCheckTimeout: Duration,
+    pub health_check_timeout: Duration,
 
     /// ConnectionLeakTimeout 连接泄漏检测超时时间
     /// 如果连接在此时间内未归还，将触发泄漏警告
-    pub ConnectionLeakTimeout: Duration,
+    pub connection_leak_timeout: Duration,
 
     /// Dialer 连接创建函数（客户端模式必需）
     /// 在客户端模式下，用于主动创建连接到服务器
-    pub Dialer: Option<Dialer>,
+    pub dialer: Option<Dialer>,
 
     /// Listener 网络监听器（服务器端模式必需）
     /// 在服务器端模式下，用于接受客户端连接
-    pub Listener: Option<std::net::TcpListener>,
+    pub listener: Option<std::net::TcpListener>,
 
     /// Acceptor 连接接受函数（服务器端模式可选）
     /// 在服务器端模式下，用于从Listener接受连接
     /// 如果为None，将使用默认的Accept方法
-    pub Acceptor: Option<Acceptor>,
+    pub acceptor: Option<Acceptor>,
 
     /// HealthChecker 健康检查函数（可选）
     /// 如果为None，将使用默认的ping检查
-    pub HealthChecker: Option<HealthChecker>,
+    pub health_checker: Option<HealthChecker>,
 
     /// CloseConn 连接关闭函数（可选）
     /// 如果为None，将尝试关闭连接
-    pub CloseConn: Option<Box<dyn Fn(&ConnectionType) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync>>,
+    pub close_conn: Option<Box<dyn Fn(&ConnectionType) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync>>,
 
     /// OnCreated 连接创建后调用
-    pub OnCreated: Option<Box<dyn Fn(&ConnectionType) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync>>,
+    pub on_created: Option<Box<dyn Fn(&ConnectionType) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync>>,
 
     /// OnBorrow 连接从池中取出前调用
-    pub OnBorrow: Option<Box<dyn Fn(&ConnectionType) + Send + Sync>>,
+    pub on_borrow: Option<Box<dyn Fn(&ConnectionType) + Send + Sync>>,
 
     /// OnReturn 连接归还池中前调用
-    pub OnReturn: Option<Box<dyn Fn(&ConnectionType) + Send + Sync>>,
+    pub on_return: Option<Box<dyn Fn(&ConnectionType) + Send + Sync>>,
 
     /// EnableStats 是否启用统计信息
-    pub EnableStats: bool,
+    pub enable_stats: bool,
 
     /// EnableHealthCheck 是否启用健康检查
-    pub EnableHealthCheck: bool,
+    pub enable_health_check: bool,
 
     /// ClearUDPBufferOnReturn 是否在归还UDP连接时清空读取缓冲区
     /// 启用此选项可以防止UDP连接复用时的数据混淆
     /// 默认值为true，建议保持启用
-    pub ClearUDPBufferOnReturn: bool,
+    pub clear_udp_buffer_on_return: bool,
 
     /// UDPBufferClearTimeout UDP缓冲区清理超时时间
     /// 如果为0，将使用默认值100ms
-    pub UDPBufferClearTimeout: Duration,
+    pub udp_buffer_clear_timeout: Duration,
 
     /// MaxBufferClearPackets UDP缓冲区清理最大包数
     /// 默认值: 100
-    pub MaxBufferClearPackets: usize,
+    pub max_buffer_clear_packets: usize,
 }
 
 impl Default for Config {
@@ -118,118 +118,118 @@ impl Default for Config {
     }
 }
 
-/// DefaultConfig 返回默认配置（客户端模式）
-pub fn DefaultConfig() -> Config {
+/// default_config 返回默认配置（客户端模式）
+pub fn default_config() -> Config {
     Config::default_config()
 }
 
-/// DefaultServerConfig 返回默认服务器端配置
-pub fn DefaultServerConfig() -> Config {
+/// default_server_config 返回默认服务器端配置
+pub fn default_server_config() -> Config {
     Config::default_server_config()
 }
 
 impl Config {
-    /// DefaultConfig 返回默认配置（客户端模式）
+    /// default_config 返回默认配置（客户端模式）
     pub fn default_config() -> Self {
         Self {
-            Mode: PoolMode::Client,
-            MaxConnections: 10,
-            MinConnections: 2,
-            MaxIdleConnections: 10,
-            ConnectionTimeout: Duration::from_secs(10),
-            IdleTimeout: Duration::from_secs(5 * 60),
-            MaxLifetime: Duration::from_secs(30 * 60),
-            GetConnectionTimeout: Duration::from_secs(5),
-            HealthCheckInterval: Duration::from_secs(30),
-            HealthCheckTimeout: Duration::from_secs(3),
-            ConnectionLeakTimeout: Duration::from_secs(5 * 60),
-            Dialer: None,
-            Listener: None,
-            Acceptor: None,
-            HealthChecker: None,
-            CloseConn: None,
-            OnCreated: None,
-            OnBorrow: None,
-            OnReturn: None,
-            EnableStats: true,
-            EnableHealthCheck: true,
-            ClearUDPBufferOnReturn: true,
-            UDPBufferClearTimeout: Duration::from_millis(100),
-            MaxBufferClearPackets: 100,
+            mode: PoolMode::Client,
+            max_connections: 10,
+            min_connections: 2,
+            max_idle_connections: 10,
+            connection_timeout: Duration::from_secs(10),
+            idle_timeout: Duration::from_secs(5 * 60),
+            max_lifetime: Duration::from_secs(30 * 60),
+            get_connection_timeout: Duration::from_secs(5),
+            health_check_interval: Duration::from_secs(30),
+            health_check_timeout: Duration::from_secs(3),
+            connection_leak_timeout: Duration::from_secs(5 * 60),
+            dialer: None,
+            listener: None,
+            acceptor: None,
+            health_checker: None,
+            close_conn: None,
+            on_created: None,
+            on_borrow: None,
+            on_return: None,
+            enable_stats: true,
+            enable_health_check: true,
+            clear_udp_buffer_on_return: true,
+            udp_buffer_clear_timeout: Duration::from_millis(100),
+            max_buffer_clear_packets: 100,
         }
     }
 
-    /// DefaultServerConfig 返回默认服务器端配置
+    /// default_server_config 返回默认服务器端配置
     pub fn default_server_config() -> Self {
         Self {
-            Mode: PoolMode::Server,
-            MaxConnections: 100, // 服务器端通常需要更多连接
-            MinConnections: 0,   // 服务器端通常不需要预热
-            MaxIdleConnections: 50,
-            ConnectionTimeout: Duration::from_secs(10),
-            IdleTimeout: Duration::from_secs(5 * 60),
-            MaxLifetime: Duration::from_secs(30 * 60),
-            GetConnectionTimeout: Duration::from_secs(5),
-            HealthCheckInterval: Duration::from_secs(30),
-            HealthCheckTimeout: Duration::from_secs(3),
-            ConnectionLeakTimeout: Duration::from_secs(5 * 60),
-            Dialer: None,
-            Listener: None,
-            Acceptor: None,
-            HealthChecker: None,
-            CloseConn: None,
-            OnCreated: None,
-            OnBorrow: None,
-            OnReturn: None,
-            EnableStats: true,
-            EnableHealthCheck: true,
-            ClearUDPBufferOnReturn: true,
-            UDPBufferClearTimeout: Duration::from_millis(100),
-            MaxBufferClearPackets: 100,
+            mode: PoolMode::Server,
+            max_connections: 100, // 服务器端通常需要更多连接
+            min_connections: 0,   // 服务器端通常不需要预热
+            max_idle_connections: 50,
+            connection_timeout: Duration::from_secs(10),
+            idle_timeout: Duration::from_secs(5 * 60),
+            max_lifetime: Duration::from_secs(30 * 60),
+            get_connection_timeout: Duration::from_secs(5),
+            health_check_interval: Duration::from_secs(30),
+            health_check_timeout: Duration::from_secs(3),
+            connection_leak_timeout: Duration::from_secs(5 * 60),
+            dialer: None,
+            listener: None,
+            acceptor: None,
+            health_checker: None,
+            close_conn: None,
+            on_created: None,
+            on_borrow: None,
+            on_return: None,
+            enable_stats: true,
+            enable_health_check: true,
+            clear_udp_buffer_on_return: true,
+            udp_buffer_clear_timeout: Duration::from_millis(100),
+            max_buffer_clear_packets: 100,
         }
     }
 
     /// Validate 验证配置有效性
-    pub fn Validate(&mut self) -> Result<()> {
+    pub fn validate(&mut self) -> Result<()> {
         // 根据模式验证必需的配置
-        match self.Mode {
+        match self.mode {
             PoolMode::Client => {
                 // 客户端模式需要Dialer
-                if self.Dialer.is_none() {
+                if self.dialer.is_none() {
                     return Err(NetConnPoolError::InvalidConfig);
                 }
             }
             PoolMode::Server => {
                 // 服务器端模式需要Listener
-                if self.Listener.is_none() {
+                if self.listener.is_none() {
                     return Err(NetConnPoolError::InvalidConfig);
                 }
                 // 如果未提供Acceptor，使用默认的Accept方法
-                if self.Acceptor.is_none() {
-                    self.Acceptor = Some(Box::new(default_acceptor));
+                if self.acceptor.is_none() {
+                    self.acceptor = Some(Box::new(default_acceptor));
                 }
             }
         }
 
-        if self.MinConnections > 0 && self.MaxConnections > 0 && self.MinConnections > self.MaxConnections {
+        if self.min_connections > 0 && self.max_connections > 0 && self.min_connections > self.max_connections {
             return Err(NetConnPoolError::InvalidConfig);
         }
-        if self.MaxIdleConnections == 0 {
+        if self.max_idle_connections == 0 {
             return Err(NetConnPoolError::InvalidConfig);
         }
-        if self.ConnectionTimeout.is_zero() {
+        if self.connection_timeout.is_zero() {
             return Err(NetConnPoolError::InvalidConfig);
         }
-        if self.MaxIdleConnections > 0 && self.MaxConnections > 0 && self.MaxIdleConnections > self.MaxConnections {
+        if self.max_idle_connections > 0 && self.max_connections > 0 && self.max_idle_connections > self.max_connections {
             // 最大空闲连接数不应超过最大连接数
-            self.MaxIdleConnections = self.MaxConnections;
+            self.max_idle_connections = self.max_connections;
         }
-        if !self.HealthCheckInterval.is_zero() && self.HealthCheckTimeout > self.HealthCheckInterval {
+        if !self.health_check_interval.is_zero() && self.health_check_timeout > self.health_check_interval {
             // 健康检查超时不应超过检查间隔
-            self.HealthCheckTimeout = self.HealthCheckInterval / 2;
+            self.health_check_timeout = self.health_check_interval / 2;
         }
-        if self.MaxBufferClearPackets == 0 {
-            self.MaxBufferClearPackets = 100;
+        if self.max_buffer_clear_packets == 0 {
+            self.max_buffer_clear_packets = 100;
         }
         Ok(())
     }

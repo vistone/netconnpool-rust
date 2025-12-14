@@ -30,17 +30,17 @@ impl std::fmt::Display for IPVersion {
     }
 }
 
-/// DetectIPVersion 检测连接的IP版本
+/// detect_ip_version 检测连接的IP版本
 /// 如果conn是实现了获取地址的trait，则检测其远程地址的IP版本
-pub fn DetectIPVersion(addr: &SocketAddr) -> IPVersion {
+pub fn detect_ip_version(addr: &SocketAddr) -> IPVersion {
     match addr {
         SocketAddr::V4(_) => IPVersion::IPv4,
         SocketAddr::V6(_) => IPVersion::IPv6,
     }
 }
 
-/// ParseIPVersion 从字符串解析IP版本
-pub fn ParseIPVersion(s: &str) -> IPVersion {
+/// parse_ip_version 从字符串解析IP版本
+pub fn parse_ip_version(s: &str) -> IPVersion {
     match s.to_lowercase().as_str() {
         "ipv4" | "4" => IPVersion::IPv4,
         "ipv6" | "6" => IPVersion::IPv6,
@@ -63,20 +63,20 @@ mod tests {
     #[test]
     fn test_detect_ip_version() {
         let addr_v4 = SocketAddr::new(Ipv4Addr::new(127, 0, 0, 1).into(), 8080);
-        assert_eq!(DetectIPVersion(&addr_v4), IPVersion::IPv4);
+        assert_eq!(detect_ip_version(&addr_v4), IPVersion::IPv4);
 
         let addr_v6 = SocketAddr::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1).into(), 8080);
-        assert_eq!(DetectIPVersion(&addr_v6), IPVersion::IPv6);
+        assert_eq!(detect_ip_version(&addr_v6), IPVersion::IPv6);
     }
 
     #[test]
     fn test_parse_ip_version() {
-        assert_eq!(ParseIPVersion("IPv4"), IPVersion::IPv4);
-        assert_eq!(ParseIPVersion("ipv4"), IPVersion::IPv4);
-        assert_eq!(ParseIPVersion("4"), IPVersion::IPv4);
-        assert_eq!(ParseIPVersion("IPv6"), IPVersion::IPv6);
-        assert_eq!(ParseIPVersion("ipv6"), IPVersion::IPv6);
-        assert_eq!(ParseIPVersion("6"), IPVersion::IPv6);
-        assert_eq!(ParseIPVersion("unknown"), IPVersion::Unknown);
+        assert_eq!(parse_ip_version("IPv4"), IPVersion::IPv4);
+        assert_eq!(parse_ip_version("ipv4"), IPVersion::IPv4);
+        assert_eq!(parse_ip_version("4"), IPVersion::IPv4);
+        assert_eq!(parse_ip_version("IPv6"), IPVersion::IPv6);
+        assert_eq!(parse_ip_version("ipv6"), IPVersion::IPv6);
+        assert_eq!(parse_ip_version("6"), IPVersion::IPv6);
+        assert_eq!(parse_ip_version("unknown"), IPVersion::Unknown);
     }
 }

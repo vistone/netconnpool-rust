@@ -25,8 +25,8 @@ impl std::fmt::Display for PoolMode {
     }
 }
 
-/// ParsePoolMode 从字符串解析连接池模式
-pub fn ParsePoolMode(s: &str) -> PoolMode {
+/// parse_pool_mode 从字符串解析连接池模式
+pub fn parse_pool_mode(s: &str) -> PoolMode {
     match s.to_lowercase().as_str() {
         "client" => PoolMode::Client,
         "server" => PoolMode::Server,
@@ -46,10 +46,10 @@ mod tests {
 
     #[test]
     fn test_parse_pool_mode() {
-        assert_eq!(ParsePoolMode("client"), PoolMode::Client);
-        assert_eq!(ParsePoolMode("server"), PoolMode::Server);
-        assert_eq!(ParsePoolMode("CLIENT"), PoolMode::Client);
-        assert_eq!(ParsePoolMode("SERVER"), PoolMode::Server);
-        assert_eq!(ParsePoolMode("unknown"), PoolMode::Client); // 默认
+        assert_eq!(parse_pool_mode("client"), PoolMode::Client);
+        assert_eq!(parse_pool_mode("server"), PoolMode::Server);
+        assert_eq!(parse_pool_mode("CLIENT"), PoolMode::Client);
+        assert_eq!(parse_pool_mode("SERVER"), PoolMode::Server);
+        assert_eq!(parse_pool_mode("unknown"), PoolMode::Client); // 默认
     }
 }

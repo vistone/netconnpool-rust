@@ -9,99 +9,99 @@ use std::time::{Duration, Instant};
 #[derive(Debug, Clone)]
 pub struct Stats {
     /// TotalConnectionsCreated 累计创建的连接数
-    pub TotalConnectionsCreated: i64,
+    pub total_connections_created: i64,
     /// TotalConnectionsClosed 累计关闭的连接数
-    pub TotalConnectionsClosed: i64,
+    pub total_connections_closed: i64,
     /// CurrentConnections 当前连接数
-    pub CurrentConnections: i64,
+    pub current_connections: i64,
     /// CurrentIdleConnections 当前空闲连接数
-    pub CurrentIdleConnections: i64,
+    pub current_idle_connections: i64,
     /// CurrentActiveConnections 当前活跃连接数
-    pub CurrentActiveConnections: i64,
+    pub current_active_connections: i64,
 
     /// CurrentIPv4Connections 当前IPv4连接数
-    pub CurrentIPv4Connections: i64,
+    pub current_ipv4_connections: i64,
     /// CurrentIPv6Connections 当前IPv6连接数
-    pub CurrentIPv6Connections: i64,
+    pub current_ipv6_connections: i64,
     /// CurrentIPv4IdleConnections 当前IPv4空闲连接数
-    pub CurrentIPv4IdleConnections: i64,
+    pub current_ipv4_idle_connections: i64,
     /// CurrentIPv6IdleConnections 当前IPv6空闲连接数
-    pub CurrentIPv6IdleConnections: i64,
+    pub current_ipv6_idle_connections: i64,
 
     /// CurrentTCPConnections 当前TCP连接数
-    pub CurrentTCPConnections: i64,
+    pub current_tcp_connections: i64,
     /// CurrentUDPConnections 当前UDP连接数
-    pub CurrentUDPConnections: i64,
+    pub current_udp_connections: i64,
     /// CurrentTCPIdleConnections 当前TCP空闲连接数
-    pub CurrentTCPIdleConnections: i64,
+    pub current_tcp_idle_connections: i64,
     /// CurrentUDPIdleConnections 当前UDP空闲连接数
-    pub CurrentUDPIdleConnections: i64,
+    pub current_udp_idle_connections: i64,
 
     /// TotalGetRequests 累计获取连接请求数
-    pub TotalGetRequests: i64,
+    pub total_get_requests: i64,
     /// SuccessfulGets 成功获取连接数
-    pub SuccessfulGets: i64,
+    pub successful_gets: i64,
     /// FailedGets 失败获取连接数
-    pub FailedGets: i64,
+    pub failed_gets: i64,
     /// TimeoutGets 超时获取连接数
-    pub TimeoutGets: i64,
+    pub timeout_gets: i64,
 
     /// HealthCheckAttempts 健康检查尝试次数
-    pub HealthCheckAttempts: i64,
+    pub health_check_attempts: i64,
     /// HealthCheckFailures 健康检查失败次数
-    pub HealthCheckFailures: i64,
+    pub health_check_failures: i64,
     /// UnhealthyConnections 不健康连接数
-    pub UnhealthyConnections: i64,
+    pub unhealthy_connections: i64,
 
     /// ConnectionErrors 连接错误数
-    pub ConnectionErrors: i64,
+    pub connection_errors: i64,
     /// LeakedConnections 泄漏的连接数
-    pub LeakedConnections: i64,
+    pub leaked_connections: i64,
 
     /// TotalConnectionsReused 累计连接复用次数（从空闲池获取的次数）
-    pub TotalConnectionsReused: i64,
+    pub total_connections_reused: i64,
     /// AverageReuseCount 平均每个连接的复用次数
-    pub AverageReuseCount: f64,
+    pub average_reuse_count: f64,
 
     /// AverageGetTime 平均获取连接时间
-    pub AverageGetTime: Duration,
+    pub average_get_time: Duration,
     /// TotalGetTime 总获取连接时间
-    pub TotalGetTime: Duration,
+    pub total_get_time: Duration,
 
     /// LastUpdateTime 最后更新时间
-    pub LastUpdateTime: Instant,
+    pub last_update_time: Instant,
 }
 
 impl Default for Stats {
     fn default() -> Self {
         Self {
-            TotalConnectionsCreated: 0,
-            TotalConnectionsClosed: 0,
-            CurrentConnections: 0,
-            CurrentIdleConnections: 0,
-            CurrentActiveConnections: 0,
-            CurrentIPv4Connections: 0,
-            CurrentIPv6Connections: 0,
-            CurrentIPv4IdleConnections: 0,
-            CurrentIPv6IdleConnections: 0,
-            CurrentTCPConnections: 0,
-            CurrentUDPConnections: 0,
-            CurrentTCPIdleConnections: 0,
-            CurrentUDPIdleConnections: 0,
-            TotalGetRequests: 0,
-            SuccessfulGets: 0,
-            FailedGets: 0,
-            TimeoutGets: 0,
-            HealthCheckAttempts: 0,
-            HealthCheckFailures: 0,
-            UnhealthyConnections: 0,
-            ConnectionErrors: 0,
-            LeakedConnections: 0,
-            TotalConnectionsReused: 0,
-            AverageReuseCount: 0.0,
-            AverageGetTime: Duration::ZERO,
-            TotalGetTime: Duration::ZERO,
-            LastUpdateTime: Instant::now(),
+            total_connections_created: 0,
+            total_connections_closed: 0,
+            current_connections: 0,
+            current_idle_connections: 0,
+            current_active_connections: 0,
+            current_ipv4_connections: 0,
+            current_ipv6_connections: 0,
+            current_ipv4_idle_connections: 0,
+            current_ipv6_idle_connections: 0,
+            current_tcp_connections: 0,
+            current_udp_connections: 0,
+            current_tcp_idle_connections: 0,
+            current_udp_idle_connections: 0,
+            total_get_requests: 0,
+            successful_gets: 0,
+            failed_gets: 0,
+            timeout_gets: 0,
+            health_check_attempts: 0,
+            health_check_failures: 0,
+            unhealthy_connections: 0,
+            connection_errors: 0,
+            leaked_connections: 0,
+            total_connections_reused: 0,
+            average_reuse_count: 0.0,
+            average_get_time: Duration::ZERO,
+            total_get_time: Duration::ZERO,
+            last_update_time: Instant::now(),
         }
     }
 }
@@ -113,31 +113,31 @@ pub struct StatsCollector {
 }
 
 struct StatsInternal {
-    TotalConnectionsCreated: AtomicI64,
-    TotalConnectionsClosed: AtomicI64,
-    CurrentConnections: AtomicI64,
-    CurrentIdleConnections: AtomicI64,
-    CurrentActiveConnections: AtomicI64,
-    CurrentIPv4Connections: AtomicI64,
-    CurrentIPv6Connections: AtomicI64,
-    CurrentIPv4IdleConnections: AtomicI64,
-    CurrentIPv6IdleConnections: AtomicI64,
-    CurrentTCPConnections: AtomicI64,
-    CurrentUDPConnections: AtomicI64,
-    CurrentTCPIdleConnections: AtomicI64,
-    CurrentUDPIdleConnections: AtomicI64,
-    TotalGetRequests: AtomicI64,
-    SuccessfulGets: AtomicI64,
-    FailedGets: AtomicI64,
-    TimeoutGets: AtomicI64,
-    HealthCheckAttempts: AtomicI64,
-    HealthCheckFailures: AtomicI64,
-    UnhealthyConnections: AtomicI64,
-    ConnectionErrors: AtomicI64,
-    LeakedConnections: AtomicI64,
-    TotalConnectionsReused: AtomicI64,
-    AverageGetTime: AtomicU64, // Duration as nanoseconds
-    TotalGetTime: AtomicU64,     // Duration as nanoseconds
+    total_connections_created: AtomicI64,
+    total_connections_closed: AtomicI64,
+    current_connections: AtomicI64,
+    current_idle_connections: AtomicI64,
+    current_active_connections: AtomicI64,
+    current_ipv4_connections: AtomicI64,
+    current_ipv6_connections: AtomicI64,
+    current_ipv4_idle_connections: AtomicI64,
+    current_ipv6_idle_connections: AtomicI64,
+    current_tcp_connections: AtomicI64,
+    current_udp_connections: AtomicI64,
+    current_tcp_idle_connections: AtomicI64,
+    current_udp_idle_connections: AtomicI64,
+    total_get_requests: AtomicI64,
+    successful_gets: AtomicI64,
+    failed_gets: AtomicI64,
+    timeout_gets: AtomicI64,
+    health_check_attempts: AtomicI64,
+    health_check_failures: AtomicI64,
+    unhealthy_connections: AtomicI64,
+    connection_errors: AtomicI64,
+    leaked_connections: AtomicI64,
+    total_connections_reused: AtomicI64,
+    average_get_time: AtomicU64, // Duration as nanoseconds
+    total_get_time: AtomicU64,     // Duration as nanoseconds
 }
 
 impl StatsCollector {
@@ -145,134 +145,134 @@ impl StatsCollector {
     pub fn new() -> Self {
         Self {
             stats: StatsInternal {
-                TotalConnectionsCreated: AtomicI64::new(0),
-                TotalConnectionsClosed: AtomicI64::new(0),
-                CurrentConnections: AtomicI64::new(0),
-                CurrentIdleConnections: AtomicI64::new(0),
-                CurrentActiveConnections: AtomicI64::new(0),
-                CurrentIPv4Connections: AtomicI64::new(0),
-                CurrentIPv6Connections: AtomicI64::new(0),
-                CurrentIPv4IdleConnections: AtomicI64::new(0),
-                CurrentIPv6IdleConnections: AtomicI64::new(0),
-                CurrentTCPConnections: AtomicI64::new(0),
-                CurrentUDPConnections: AtomicI64::new(0),
-                CurrentTCPIdleConnections: AtomicI64::new(0),
-                CurrentUDPIdleConnections: AtomicI64::new(0),
-                TotalGetRequests: AtomicI64::new(0),
-                SuccessfulGets: AtomicI64::new(0),
-                FailedGets: AtomicI64::new(0),
-                TimeoutGets: AtomicI64::new(0),
-                HealthCheckAttempts: AtomicI64::new(0),
-                HealthCheckFailures: AtomicI64::new(0),
-                UnhealthyConnections: AtomicI64::new(0),
-                ConnectionErrors: AtomicI64::new(0),
-                LeakedConnections: AtomicI64::new(0),
-                TotalConnectionsReused: AtomicI64::new(0),
-                AverageGetTime: AtomicU64::new(0),
-                TotalGetTime: AtomicU64::new(0),
+                total_connections_created: AtomicI64::new(0),
+                total_connections_closed: AtomicI64::new(0),
+                current_connections: AtomicI64::new(0),
+                current_idle_connections: AtomicI64::new(0),
+                current_active_connections: AtomicI64::new(0),
+                current_ipv4_connections: AtomicI64::new(0),
+                current_ipv6_connections: AtomicI64::new(0),
+                current_ipv4_idle_connections: AtomicI64::new(0),
+                current_ipv6_idle_connections: AtomicI64::new(0),
+                current_tcp_connections: AtomicI64::new(0),
+                current_udp_connections: AtomicI64::new(0),
+                current_tcp_idle_connections: AtomicI64::new(0),
+                current_udp_idle_connections: AtomicI64::new(0),
+                total_get_requests: AtomicI64::new(0),
+                successful_gets: AtomicI64::new(0),
+                failed_gets: AtomicI64::new(0),
+                timeout_gets: AtomicI64::new(0),
+                health_check_attempts: AtomicI64::new(0),
+                health_check_failures: AtomicI64::new(0),
+                unhealthy_connections: AtomicI64::new(0),
+                connection_errors: AtomicI64::new(0),
+                leaked_connections: AtomicI64::new(0),
+                total_connections_reused: AtomicI64::new(0),
+                average_get_time: AtomicU64::new(0),
+                total_get_time: AtomicU64::new(0),
             },
             last_update_time: RwLock::new(Instant::now()),
         }
     }
 
     /// IncrementTotalConnectionsCreated 增加创建连接计数
-    pub fn IncrementTotalConnectionsCreated(&self) {
-        self.stats.TotalConnectionsCreated.fetch_add(1, Ordering::Relaxed);
-        self.stats.CurrentConnections.fetch_add(1, Ordering::Relaxed);
+    pub fn increment_total_connections_created(&self) {
+        self.stats.total_connections_created.fetch_add(1, Ordering::Relaxed);
+        self.stats.current_connections.fetch_add(1, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementTotalConnectionsClosed 增加关闭连接计数
-    pub fn IncrementTotalConnectionsClosed(&self) {
-        self.stats.TotalConnectionsClosed.fetch_add(1, Ordering::Relaxed);
-        self.stats.CurrentConnections.fetch_sub(1, Ordering::Relaxed);
+    pub fn increment_total_connections_closed(&self) {
+        self.stats.total_connections_closed.fetch_add(1, Ordering::Relaxed);
+        self.stats.current_connections.fetch_sub(1, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementCurrentIdleConnections 增加空闲连接计数
-    pub fn IncrementCurrentIdleConnections(&self, delta: i64) {
-        self.stats.CurrentIdleConnections.fetch_add(delta, Ordering::Relaxed);
+    pub fn increment_current_idle_connections(&self, delta: i64) {
+        self.stats.current_idle_connections.fetch_add(delta, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementCurrentActiveConnections 增加活跃连接计数
-    pub fn IncrementCurrentActiveConnections(&self, delta: i64) {
-        self.stats.CurrentActiveConnections.fetch_add(delta, Ordering::Relaxed);
+    pub fn increment_current_active_connections(&self, delta: i64) {
+        self.stats.current_active_connections.fetch_add(delta, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementTotalGetRequests 增加获取请求计数
-    pub fn IncrementTotalGetRequests(&self) {
-        self.stats.TotalGetRequests.fetch_add(1, Ordering::Relaxed);
+    pub fn increment_total_get_requests(&self) {
+        self.stats.total_get_requests.fetch_add(1, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementSuccessfulGets 增加成功获取计数
-    pub fn IncrementSuccessfulGets(&self) {
-        self.stats.SuccessfulGets.fetch_add(1, Ordering::Relaxed);
+    pub fn increment_successful_gets(&self) {
+        self.stats.successful_gets.fetch_add(1, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementFailedGets 增加失败获取计数
-    pub fn IncrementFailedGets(&self) {
-        self.stats.FailedGets.fetch_add(1, Ordering::Relaxed);
+    pub fn increment_failed_gets(&self) {
+        self.stats.failed_gets.fetch_add(1, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementTimeoutGets 增加超时获取计数
-    pub fn IncrementTimeoutGets(&self) {
-        self.stats.TimeoutGets.fetch_add(1, Ordering::Relaxed);
+    pub fn increment_timeout_gets(&self) {
+        self.stats.timeout_gets.fetch_add(1, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementHealthCheckAttempts 增加健康检查尝试计数
-    pub fn IncrementHealthCheckAttempts(&self) {
-        self.stats.HealthCheckAttempts.fetch_add(1, Ordering::Relaxed);
+    pub fn increment_health_check_attempts(&self) {
+        self.stats.health_check_attempts.fetch_add(1, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementHealthCheckFailures 增加健康检查失败计数
-    pub fn IncrementHealthCheckFailures(&self) {
-        self.stats.HealthCheckFailures.fetch_add(1, Ordering::Relaxed);
+    pub fn increment_health_check_failures(&self) {
+        self.stats.health_check_failures.fetch_add(1, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementUnhealthyConnections 增加不健康连接计数
-    pub fn IncrementUnhealthyConnections(&self) {
-        self.stats.UnhealthyConnections.fetch_add(1, Ordering::Relaxed);
+    pub fn increment_unhealthy_connections(&self) {
+        self.stats.unhealthy_connections.fetch_add(1, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementConnectionErrors 增加连接错误计数
-    pub fn IncrementConnectionErrors(&self) {
-        self.stats.ConnectionErrors.fetch_add(1, Ordering::Relaxed);
+    pub fn increment_connection_errors(&self) {
+        self.stats.connection_errors.fetch_add(1, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementLeakedConnections 增加泄漏连接计数
-    pub fn IncrementLeakedConnections(&self) {
-        self.stats.LeakedConnections.fetch_add(1, Ordering::Relaxed);
+    pub fn increment_leaked_connections(&self) {
+        self.stats.leaked_connections.fetch_add(1, Ordering::Relaxed);
         self.update_time();
     }
 
     /// RecordGetTime 记录获取连接的时间
-    pub fn RecordGetTime(&self, duration: Duration) {
+    pub fn record_get_time(&self, duration: Duration) {
         let nanos = duration.as_nanos() as u64;
-        self.stats.TotalGetTime.fetch_add(nanos, Ordering::Relaxed);
+        self.stats.total_get_time.fetch_add(nanos, Ordering::Relaxed);
 
         // 计算平均时间（使用重试机制避免竞争条件，最多重试3次）
         let max_retries = 3;
         for retry in 0..max_retries {
-            let total_gets = self.stats.SuccessfulGets.load(Ordering::Acquire);
+            let total_gets = self.stats.successful_gets.load(Ordering::Acquire);
             if total_gets > 0 {
-                let total_time = self.stats.TotalGetTime.load(Ordering::Acquire);
+                let total_time = self.stats.total_get_time.load(Ordering::Acquire);
                 // 再次检查，确保值没有变化
-                let total_gets2 = self.stats.SuccessfulGets.load(Ordering::Acquire);
+                let total_gets2 = self.stats.successful_gets.load(Ordering::Acquire);
                 if total_gets == total_gets2 {
                     // 值稳定，可以安全计算平均值
                     if total_gets2 > 0 {
                         let avg_time = total_time / total_gets2 as u64;
-                        self.stats.AverageGetTime.store(avg_time, Ordering::Release);
+                        self.stats.average_get_time.store(avg_time, Ordering::Release);
                     }
                     break;
                 }
@@ -282,9 +282,9 @@ impl StatsCollector {
                 }
                 // 最后一次重试，使用当前值计算
                 if total_gets2 > 0 {
-                    let total_time2 = self.stats.TotalGetTime.load(Ordering::Acquire);
+                    let total_time2 = self.stats.total_get_time.load(Ordering::Acquire);
                     let avg_time = total_time2 / total_gets2 as u64;
-                    self.stats.AverageGetTime.store(avg_time, Ordering::Release);
+                    self.stats.average_get_time.store(avg_time, Ordering::Release);
                 }
                 break;
             } else {
@@ -296,9 +296,9 @@ impl StatsCollector {
     }
 
     /// GetStats 获取当前统计信息快照
-    pub fn GetStats(&self) -> Stats {
-        let total_created = self.stats.TotalConnectionsCreated.load(Ordering::Relaxed);
-        let total_reused = self.stats.TotalConnectionsReused.load(Ordering::Relaxed);
+    pub fn get_stats(&self) -> Stats {
+        let total_created = self.stats.total_connections_created.load(Ordering::Relaxed);
+        let total_reused = self.stats.total_connections_reused.load(Ordering::Relaxed);
         let avg_reuse = if total_created > 0 {
             total_reused as f64 / total_created as f64
         } else {
@@ -306,91 +306,91 @@ impl StatsCollector {
         };
 
         Stats {
-            TotalConnectionsCreated: self.stats.TotalConnectionsCreated.load(Ordering::Relaxed),
-            TotalConnectionsClosed: self.stats.TotalConnectionsClosed.load(Ordering::Relaxed),
-            CurrentConnections: self.stats.CurrentConnections.load(Ordering::Relaxed),
-            CurrentIdleConnections: self.stats.CurrentIdleConnections.load(Ordering::Relaxed),
-            CurrentActiveConnections: self.stats.CurrentActiveConnections.load(Ordering::Relaxed),
-            CurrentIPv4Connections: self.stats.CurrentIPv4Connections.load(Ordering::Relaxed),
-            CurrentIPv6Connections: self.stats.CurrentIPv6Connections.load(Ordering::Relaxed),
-            CurrentIPv4IdleConnections: self.stats.CurrentIPv4IdleConnections.load(Ordering::Relaxed),
-            CurrentIPv6IdleConnections: self.stats.CurrentIPv6IdleConnections.load(Ordering::Relaxed),
-            CurrentTCPConnections: self.stats.CurrentTCPConnections.load(Ordering::Relaxed),
-            CurrentUDPConnections: self.stats.CurrentUDPConnections.load(Ordering::Relaxed),
-            CurrentTCPIdleConnections: self.stats.CurrentTCPIdleConnections.load(Ordering::Relaxed),
-            CurrentUDPIdleConnections: self.stats.CurrentUDPIdleConnections.load(Ordering::Relaxed),
-            TotalGetRequests: self.stats.TotalGetRequests.load(Ordering::Relaxed),
-            SuccessfulGets: self.stats.SuccessfulGets.load(Ordering::Relaxed),
-            FailedGets: self.stats.FailedGets.load(Ordering::Relaxed),
-            TimeoutGets: self.stats.TimeoutGets.load(Ordering::Relaxed),
-            HealthCheckAttempts: self.stats.HealthCheckAttempts.load(Ordering::Relaxed),
-            HealthCheckFailures: self.stats.HealthCheckFailures.load(Ordering::Relaxed),
-            UnhealthyConnections: self.stats.UnhealthyConnections.load(Ordering::Relaxed),
-            ConnectionErrors: self.stats.ConnectionErrors.load(Ordering::Relaxed),
-            LeakedConnections: self.stats.LeakedConnections.load(Ordering::Relaxed),
-            TotalConnectionsReused: total_reused,
-            AverageReuseCount: avg_reuse,
-            AverageGetTime: Duration::from_nanos(
-                self.stats.AverageGetTime.load(Ordering::Relaxed),
+            total_connections_created: self.stats.total_connections_created.load(Ordering::Relaxed),
+            total_connections_closed: self.stats.total_connections_closed.load(Ordering::Relaxed),
+            current_connections: self.stats.current_connections.load(Ordering::Relaxed),
+            current_idle_connections: self.stats.current_idle_connections.load(Ordering::Relaxed),
+            current_active_connections: self.stats.current_active_connections.load(Ordering::Relaxed),
+            current_ipv4_connections: self.stats.current_ipv4_connections.load(Ordering::Relaxed),
+            current_ipv6_connections: self.stats.current_ipv6_connections.load(Ordering::Relaxed),
+            current_ipv4_idle_connections: self.stats.current_ipv4_idle_connections.load(Ordering::Relaxed),
+            current_ipv6_idle_connections: self.stats.current_ipv6_idle_connections.load(Ordering::Relaxed),
+            current_tcp_connections: self.stats.current_tcp_connections.load(Ordering::Relaxed),
+            current_udp_connections: self.stats.current_udp_connections.load(Ordering::Relaxed),
+            current_tcp_idle_connections: self.stats.current_tcp_idle_connections.load(Ordering::Relaxed),
+            current_udp_idle_connections: self.stats.current_udp_idle_connections.load(Ordering::Relaxed),
+            total_get_requests: self.stats.total_get_requests.load(Ordering::Relaxed),
+            successful_gets: self.stats.successful_gets.load(Ordering::Relaxed),
+            failed_gets: self.stats.failed_gets.load(Ordering::Relaxed),
+            timeout_gets: self.stats.timeout_gets.load(Ordering::Relaxed),
+            health_check_attempts: self.stats.health_check_attempts.load(Ordering::Relaxed),
+            health_check_failures: self.stats.health_check_failures.load(Ordering::Relaxed),
+            unhealthy_connections: self.stats.unhealthy_connections.load(Ordering::Relaxed),
+            connection_errors: self.stats.connection_errors.load(Ordering::Relaxed),
+            leaked_connections: self.stats.leaked_connections.load(Ordering::Relaxed),
+            total_connections_reused: total_reused,
+            average_reuse_count: avg_reuse,
+            average_get_time: Duration::from_nanos(
+                self.stats.average_get_time.load(Ordering::Relaxed),
             ),
-            TotalGetTime: Duration::from_nanos(
-                self.stats.TotalGetTime.load(Ordering::Relaxed),
+            total_get_time: Duration::from_nanos(
+                self.stats.total_get_time.load(Ordering::Relaxed),
             ),
-            LastUpdateTime: *self.last_update_time.read().unwrap(),
+            last_update_time: *self.last_update_time.read().unwrap(),
         }
     }
 
     /// IncrementCurrentIPv4Connections 增加IPv4连接计数
-    pub fn IncrementCurrentIPv4Connections(&self, delta: i64) {
-        self.stats.CurrentIPv4Connections.fetch_add(delta, Ordering::Relaxed);
+    pub fn increment_current_ipv4_connections(&self, delta: i64) {
+        self.stats.current_ipv4_connections.fetch_add(delta, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementCurrentIPv6Connections 增加IPv6连接计数
-    pub fn IncrementCurrentIPv6Connections(&self, delta: i64) {
-        self.stats.CurrentIPv6Connections.fetch_add(delta, Ordering::Relaxed);
+    pub fn increment_current_ipv6_connections(&self, delta: i64) {
+        self.stats.current_ipv6_connections.fetch_add(delta, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementCurrentIPv4IdleConnections 增加IPv4空闲连接计数
-    pub fn IncrementCurrentIPv4IdleConnections(&self, delta: i64) {
-        self.stats.CurrentIPv4IdleConnections.fetch_add(delta, Ordering::Relaxed);
+    pub fn increment_current_ipv4_idle_connections(&self, delta: i64) {
+        self.stats.current_ipv4_idle_connections.fetch_add(delta, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementCurrentIPv6IdleConnections 增加IPv6空闲连接计数
-    pub fn IncrementCurrentIPv6IdleConnections(&self, delta: i64) {
-        self.stats.CurrentIPv6IdleConnections.fetch_add(delta, Ordering::Relaxed);
+    pub fn increment_current_ipv6_idle_connections(&self, delta: i64) {
+        self.stats.current_ipv6_idle_connections.fetch_add(delta, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementCurrentTCPConnections 增加TCP连接计数
-    pub fn IncrementCurrentTCPConnections(&self, delta: i64) {
-        self.stats.CurrentTCPConnections.fetch_add(delta, Ordering::Relaxed);
+    pub fn increment_current_tcp_connections(&self, delta: i64) {
+        self.stats.current_tcp_connections.fetch_add(delta, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementCurrentUDPConnections 增加UDP连接计数
-    pub fn IncrementCurrentUDPConnections(&self, delta: i64) {
-        self.stats.CurrentUDPConnections.fetch_add(delta, Ordering::Relaxed);
+    pub fn increment_current_udp_connections(&self, delta: i64) {
+        self.stats.current_udp_connections.fetch_add(delta, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementCurrentTCPIdleConnections 增加TCP空闲连接计数
-    pub fn IncrementCurrentTCPIdleConnections(&self, delta: i64) {
-        self.stats.CurrentTCPIdleConnections.fetch_add(delta, Ordering::Relaxed);
+    pub fn increment_current_tcp_idle_connections(&self, delta: i64) {
+        self.stats.current_tcp_idle_connections.fetch_add(delta, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementCurrentUDPIdleConnections 增加UDP空闲连接计数
-    pub fn IncrementCurrentUDPIdleConnections(&self, delta: i64) {
-        self.stats.CurrentUDPIdleConnections.fetch_add(delta, Ordering::Relaxed);
+    pub fn increment_current_udp_idle_connections(&self, delta: i64) {
+        self.stats.current_udp_idle_connections.fetch_add(delta, Ordering::Relaxed);
         self.update_time();
     }
 
     /// IncrementTotalConnectionsReused 增加连接复用计数
-    pub fn IncrementTotalConnectionsReused(&self) {
-        self.stats.TotalConnectionsReused.fetch_add(1, Ordering::Relaxed);
+    pub fn increment_total_connections_reused(&self) {
+        self.stats.total_connections_reused.fetch_add(1, Ordering::Relaxed);
         self.update_time();
     }
 

@@ -1,13 +1,13 @@
 // Copyright (c) 2025, vistone
 // All rights reserved.
 
-use std::io::{self, Read};
+use std::io::{self};
 use std::net::UdpSocket;
 use std::time::{Duration, Instant};
 
-/// ClearUDPReadBuffer 清空UDP连接的读取缓冲区
+/// clear_udp_read_buffer 清空UDP连接的读取缓冲区
 /// 这对于防止UDP连接在连接池中复用时的数据混淆非常重要
-pub fn ClearUDPReadBuffer(
+pub fn clear_udp_read_buffer(
     socket: &UdpSocket,
     timeout: Duration,
     max_packets: usize,
@@ -54,9 +54,9 @@ pub fn ClearUDPReadBuffer(
     Ok(())
 }
 
-/// HasUDPDataInBuffer 检查UDP连接读取缓冲区是否有数据
+/// has_udp_data_in_buffer 检查UDP连接读取缓冲区是否有数据
 /// 返回true表示可能有数据，false表示缓冲区为空
-pub fn HasUDPDataInBuffer(socket: &UdpSocket) -> bool {
+pub fn has_udp_data_in_buffer(socket: &UdpSocket) -> bool {
     socket
         .set_read_timeout(Some(Duration::from_millis(1)))
         .is_ok()
@@ -80,6 +80,6 @@ mod tests {
         // 空缓冲区应该返回false（超时）
         // 注意：由于 UDP 是无连接的，这个测试可能不稳定
         // 我们只测试函数不会 panic
-        let _ = HasUDPDataInBuffer(&socket);
+        let _ = has_udp_data_in_buffer(&socket);
     }
 }

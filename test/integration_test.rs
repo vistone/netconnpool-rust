@@ -4,7 +4,7 @@
 // 集成测试
 
 use netconnpool::*;
-use netconnpool::config::DefaultConfig;
+use netconnpool::config::default_config;
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
 use std::thread;
@@ -24,29 +24,29 @@ fn test_full_lifecycle() {
     let listener = create_test_server();
     let addr = get_server_addr(&listener);
     
-    let mut config = DefaultConfig();
-    config.Dialer = Some(Box::new(move || {
+    let mut config = default_config();
+    config.dialer = Some(Box::new(move || {
         TcpStream::connect(&addr)
             .map(|s| ConnectionType::Tcp(s))
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }));
     let max_conns = 50;
-    config.MaxConnections = max_conns;
-    config.MinConnections = 5;
-    config.MaxIdleConnections = 20;
-    config.IdleTimeout = Duration::from_secs(10);
-    config.MaxLifetime = Duration::from_secs(60);
-    config.EnableStats = true;
-    config.EnableHealthCheck = true;
+    config.max_connections = max_conns;
+    config.min_connections = 5;
+    config.max_idle_connections = 20;
+    config.idle_timeout = Duration::from_secs(10);
+    config.max_lifetime = Duration::from_secs(60);
+    config.enable_stats = true;
+    config.enable_health_check = true;
     
     // 创建连接池
-    let pool = Arc::new(Pool::NewPool(config).unwrap());
+    let pool = Arc::new(Pool::new(config).unwrap());
     
     // 阶段1: 预热阶段
     println!("阶段1: 预热阶段");
     thread::sleep(Duration::from_millis(100));
-    let stats1 = pool.Stats();
-    println!("  当前连接数: {}", stats1.CurrentConnections);
+    let stats1 = pool.stats();
+    println!("  当前连接数: {}", stats1.current_connections);
     
     // 阶段2: 正常使用阶段
     println!("阶段2: 正常使用阶段");
@@ -58,9 +58,9 @@ fn test_full_lifecycle() {
             let pool = pool.clone();
             thread::spawn(move || {
                 for _ in 0..operations_per_thread {
-                    if let Ok(conn) = pool.Get() {
+                    if let Ok(conn) = pool.get() {
                         thread::sleep(Duration::from_millis(5));
-                        let _ = pool.Put(conn);
+                        let _ = pool.put(conn);
                     }
                 }
             })
@@ -71,9 +71,9 @@ fn test_full_lifecycle() {
         handle.join().unwrap();
     }
     
-    let stats2 = pool.Stats();
-    println!("  总操作数: {}", stats2.SuccessfulGets);
-    println!("  连接复用率: {:.2}%", stats2.AverageReuseCount * 100.0);
+    let stats2 = pool.stats();
+    println!("  总操作数: {}", stats2.successful_gets);
+    println!("  连接复用率: {:.2}%", stats2.average_reuse_count * 100.0);
     
     // 阶段3: 高负载阶段
     println!("阶段3: 高负载阶段");
@@ -85,9 +85,9 @@ fn test_full_lifecycle() {
             let pool = pool.clone();
             thread::spawn(move || {
                 for _ in 0..high_load_ops {
-                    if let Ok(conn) = pool.Get() {
+                    if let Ok(conn) = pool.get() {
                         thread::sleep(Duration::from_millis(1));
-                        let _ = pool.Put(conn);
+                        let _ = pool.put(conn);
                     }
                 }
             })
@@ -98,23 +98,23 @@ fn test_full_lifecycle() {
         handle.join().unwrap();
     }
     
-    let stats3 = pool.Stats();
-    println!("  高负载操作数: {}", stats3.SuccessfulGets - stats2.SuccessfulGets);
+    let stats3 = pool.stats();
+    println!("  高负载操作数: {}", stats3.successful_gets - stats2.successful_gets);
     
     // 阶段4: 清理和关闭
     println!("阶段4: 清理和关闭");
-    assert!(pool.Close().is_ok(), "应该能成功关闭连接池");
+    assert!(pool.close().is_ok(), "应该能成功关闭连接池");
     
-    let final_stats = pool.Stats();
+    let final_stats = pool.stats();
     println!("最终统计:");
-    println!("  总创建连接数: {}", final_stats.TotalConnectionsCreated);
-    println!("  总关闭连接数: {}", final_stats.TotalConnectionsClosed);
-    println!("  总成功获取: {}", final_stats.SuccessfulGets);
-    println!("  总失败获取: {}", final_stats.FailedGets);
+    println!("  总创建连接数: {}", final_stats.total_connections_created);
+    println!("  总关闭连接数: {}", final_stats.total_connections_closed);
+    println!("  总成功获取: {}", final_stats.successful_gets);
+    println!("  总失败获取: {}", final_stats.failed_gets);
     
     // 验证统计数据的合理性
-    assert!(final_stats.TotalConnectionsCreated <= max_conns as i64);
-    assert!(final_stats.SuccessfulGets > 0);
+    assert!(final_stats.total_connections_created <= max_conns as i64);
+    assert!(final_stats.successful_gets > 0);
 }
 
 #[test]
@@ -123,9 +123,9 @@ fn test_error_recovery() {
     let listener = create_test_server();
     let addr = get_server_addr(&listener);
     
-    let mut config = DefaultConfig();
+    let mut config = default_config();
     let addr_clone = addr.clone();
-    config.Dialer = Some(Box::new(move || {
+    config.dialer = Some(Box::new(move || {
         // 模拟偶尔的连接失败
         static mut COUNTER: u32 = 0;
         unsafe {
@@ -143,21 +143,21 @@ fn test_error_recovery() {
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }));
     let max_conns = 20;
-    config.MaxConnections = max_conns;
-    config.MinConnections = 0;
-    config.EnableStats = true;
+    config.max_connections = max_conns;
+    config.min_connections = 0;
+    config.enable_stats = true;
     
-    let pool = Arc::new(Pool::NewPool(config).unwrap());
+    let pool = Arc::new(Pool::new(config).unwrap());
     
     let mut success_count = 0;
     let mut error_count = 0;
     
     for _ in 0..100 {
-        match pool.Get() {
+        match pool.get() {
             Ok(conn) => {
                 success_count += 1;
                 thread::sleep(Duration::from_millis(1));
-                let _ = pool.Put(conn);
+                let _ = pool.put(conn);
             }
             Err(_) => {
                 error_count += 1;
@@ -165,12 +165,12 @@ fn test_error_recovery() {
         }
     }
     
-    let stats = pool.Stats();
+    let stats = pool.stats();
     println!("错误恢复测试结果:");
     println!("  成功操作: {}", success_count);
     println!("  错误操作: {}", error_count);
-    println!("  统计中的失败数: {}", stats.FailedGets);
-    println!("  统计中的错误数: {}", stats.ConnectionErrors);
+    println!("  统计中的失败数: {}", stats.failed_gets);
+    println!("  统计中的错误数: {}", stats.connection_errors);
     
     // 即使有错误，也应该能继续工作
     assert!(success_count > 0, "应该有成功的操作");
@@ -182,18 +182,18 @@ fn test_concurrent_pool_operations() {
     let listener = create_test_server();
     let addr = get_server_addr(&listener);
     
-    let mut config = DefaultConfig();
-    config.Dialer = Some(Box::new(move || {
+    let mut config = default_config();
+    config.dialer = Some(Box::new(move || {
         TcpStream::connect(&addr)
             .map(|s| ConnectionType::Tcp(s))
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }));
     let max_conns = 100;
-    config.MaxConnections = max_conns;
-    config.MinConnections = 0;
-    config.EnableStats = true;
+    config.max_connections = max_conns;
+    config.min_connections = 0;
+    config.enable_stats = true;
     
-    let pool = Arc::new(Pool::NewPool(config).unwrap());
+    let pool = Arc::new(Pool::new(config).unwrap());
     
     // 创建多个线程同时进行不同的操作
     let num_threads = 20;
@@ -205,31 +205,31 @@ fn test_concurrent_pool_operations() {
                     0 => {
                         // 线程组1: 获取和归还
                         for _ in 0..50 {
-                            if let Ok(conn) = pool.Get() {
-                                let _ = pool.Put(conn);
+                            if let Ok(conn) = pool.get() {
+                                let _ = pool.put(conn);
                             }
                         }
                     }
                     1 => {
                         // 线程组2: 只获取TCP连接
                         for _ in 0..50 {
-                            if let Ok(conn) = pool.GetTCP() {
-                                let _ = pool.Put(conn);
+                            if let Ok(conn) = pool.get_tcp() {
+                                let _ = pool.put(conn);
                             }
                         }
                     }
                     2 => {
                         // 线程组3: 获取IPv4连接
                         for _ in 0..50 {
-                            if let Ok(conn) = pool.GetIPv4() {
-                                let _ = pool.Put(conn);
+                            if let Ok(conn) = pool.get_ipv4() {
+                                let _ = pool.put(conn);
                             }
                         }
                     }
                     _ => {
                         // 线程组4: 获取统计信息
                         for _ in 0..100 {
-                            let _ = pool.Stats();
+                            let _ = pool.stats();
                         }
                     }
                 }
@@ -241,11 +241,11 @@ fn test_concurrent_pool_operations() {
         handle.join().unwrap();
     }
     
-    let stats = pool.Stats();
+    let stats = pool.stats();
     println!("并发操作测试结果:");
-    println!("  总成功获取: {}", stats.SuccessfulGets);
-    println!("  当前连接数: {}", stats.CurrentConnections);
-    println!("  连接复用: {}", stats.TotalConnectionsReused);
+    println!("  总成功获取: {}", stats.successful_gets);
+    println!("  当前连接数: {}", stats.current_connections);
+    println!("  连接复用: {}", stats.total_connections_reused);
     
-    assert!(stats.SuccessfulGets > 0, "应该有成功的操作");
+    assert!(stats.successful_gets > 0, "应该有成功的操作");
 }

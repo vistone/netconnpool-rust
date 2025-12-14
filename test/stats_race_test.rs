@@ -23,16 +23,16 @@ fn test_stats_race_condition_detailed() {
                 for i in 0..operations_per_thread {
                     // 根据线程ID和操作序号选择不同的操作
                     match (thread_id + i) % 8 {
-                        0 => collector.IncrementTotalConnectionsCreated(),
-                        1 => collector.IncrementTotalConnectionsClosed(),
-                        2 => collector.IncrementSuccessfulGets(),
-                        3 => collector.IncrementFailedGets(),
-                        4 => collector.IncrementCurrentActiveConnections(1),
-                        5 => collector.IncrementCurrentIdleConnections(1),
-                        6 => collector.IncrementTotalConnectionsReused(),
+                        0 => collector.increment_total_connections_created(),
+                        1 => collector.increment_total_connections_closed(),
+                        2 => collector.increment_successful_gets(),
+                        3 => collector.increment_failed_gets(),
+                        4 => collector.increment_current_active_connections(1),
+                        5 => collector.increment_current_idle_connections(1),
+                        6 => collector.increment_total_connections_reused(),
                         _ => {
                             // 读取操作
-                            let _stats = collector.GetStats();
+                            let stats = collector.get_stats();
                         }
                     }
                 }
@@ -44,17 +44,17 @@ fn test_stats_race_condition_detailed() {
         handle.join().unwrap();
     }
     
-    let final_stats = collector.GetStats();
+    let final_stats = collector.get_stats();
     let expected_created = (num_threads * operations_per_thread) / 8;
     
     println!("统计模块详细竞争条件测试结果:");
     println!("  线程数: {}", num_threads);
     println!("  每线程操作数: {}", operations_per_thread);
     println!("  预期创建数: {}", expected_created);
-    println!("  实际创建数: {}", final_stats.TotalConnectionsCreated);
+    println!("  实际创建数: {}", final_stats.total_connections_created);
     
     // 验证数据一致性
-    assert!((final_stats.TotalConnectionsCreated - expected_created as i64).abs() < 100);
+    assert!((final_stats.total_connections_created - expected_created as i64).abs() < 100);
 }
 
 #[test]
@@ -71,10 +71,10 @@ fn test_stats_concurrent_increment_decrement() {
             thread::spawn(move || {
                 for _ in 0..operations_per_thread {
                     // 先增后减，最终应该为0
-                    collector.IncrementCurrentActiveConnections(1);
-                    collector.IncrementCurrentActiveConnections(-1);
-                    collector.IncrementCurrentIdleConnections(1);
-                    collector.IncrementCurrentIdleConnections(-1);
+                    collector.increment_current_active_connections(1);
+                    collector.increment_current_active_connections(-1);
+                    collector.increment_current_idle_connections(1);
+                    collector.increment_current_idle_connections(-1);
                 }
             })
         })
@@ -84,15 +84,15 @@ fn test_stats_concurrent_increment_decrement() {
         handle.join().unwrap();
     }
     
-    let final_stats = collector.GetStats();
+    let final_stats = collector.get_stats();
     
     println!("统计模块并发增减测试结果:");
-    println!("  当前活跃连接数: {}", final_stats.CurrentActiveConnections);
-    println!("  当前空闲连接数: {}", final_stats.CurrentIdleConnections);
+    println!("  当前活跃连接数: {}", final_stats.current_active_connections);
+    println!("  当前空闲连接数: {}", final_stats.current_idle_connections);
     
     // 最终应该为0（允许小的误差）
-    assert!(final_stats.CurrentActiveConnections.abs() < 100);
-    assert!(final_stats.CurrentIdleConnections.abs() < 100);
+    assert!(final_stats.current_active_connections.abs() < 100);
+    assert!(final_stats.current_idle_connections.abs() < 100);
 }
 
 #[test]
@@ -105,7 +105,7 @@ fn test_stats_record_get_time_race() {
     
     // 先创建一些成功获取
     for _ in 0..(num_threads * operations_per_thread) {
-        collector.IncrementSuccessfulGets();
+        collector.increment_successful_gets();
     }
     
     let handles: Vec<_> = (0..num_threads)
@@ -113,7 +113,7 @@ fn test_stats_record_get_time_race() {
             let collector = collector.clone();
             thread::spawn(move || {
                 for _ in 0..operations_per_thread {
-                    collector.RecordGetTime(Duration::from_millis(10));
+                    collector.record_get_time(Duration::from_millis(10));
                 }
             })
         })
@@ -123,17 +123,17 @@ fn test_stats_record_get_time_race() {
         handle.join().unwrap();
     }
     
-    let final_stats = collector.GetStats();
+    let final_stats = collector.get_stats();
     
     println!("统计模块时间记录竞争测试结果:");
-    println!("  成功获取数: {}", final_stats.SuccessfulGets);
-    println!("  总时间: {:?}", final_stats.TotalGetTime);
-    println!("  平均时间: {:?}", final_stats.AverageGetTime);
+    println!("  成功获取数: {}", final_stats.successful_gets);
+    println!("  总时间: {:?}", final_stats.total_get_time);
+    println!("  平均时间: {:?}", final_stats.average_get_time);
     
     // 验证平均时间计算正确
-    if final_stats.SuccessfulGets > 0 {
-        let calculated_avg = final_stats.TotalGetTime.as_nanos() / final_stats.SuccessfulGets as u128;
-        let reported_avg = final_stats.AverageGetTime.as_nanos();
+    if final_stats.successful_gets > 0 {
+        let calculated_avg = final_stats.total_get_time.as_nanos() / final_stats.successful_gets as u128;
+        let reported_avg = final_stats.average_get_time.as_nanos();
         let diff = if calculated_avg > reported_avg {
             calculated_avg - reported_avg
         } else {
@@ -159,8 +159,8 @@ fn test_stats_get_stats_consistency() {
             let collector = collector.clone();
             thread::spawn(move || {
                 for _ in 0..operations_per_thread {
-                    collector.IncrementTotalConnectionsCreated();
-                    collector.IncrementTotalConnectionsClosed();
+                    collector.increment_total_connections_created();
+                    collector.increment_total_connections_closed();
                 }
             })
         })
@@ -171,11 +171,11 @@ fn test_stats_get_stats_consistency() {
             let collector = collector.clone();
             thread::spawn(move || {
                 for _ in 0..operations_per_thread {
-                    let stats = collector.GetStats();
+                    let stats = collector.get_stats();
                     // 验证数据一致性：当前连接数应该等于创建数减去关闭数
-                    let calculated_current = stats.TotalConnectionsCreated - stats.TotalConnectionsClosed;
+                    let calculated_current = stats.total_connections_created - stats.total_connections_closed;
                     // 允许小的误差（由于并发）
-                    assert!((stats.CurrentConnections - calculated_current).abs() <= 1000,
+                    assert!((stats.current_connections - calculated_current).abs() <= 1000,
                         "当前连接数应该等于创建数减去关闭数");
                 }
             })
@@ -189,15 +189,15 @@ fn test_stats_get_stats_consistency() {
         handle.join().unwrap();
     }
     
-    let final_stats = collector.GetStats();
+    let final_stats = collector.get_stats();
     println!("统计模块读取一致性测试结果:");
-    println!("  创建连接数: {}", final_stats.TotalConnectionsCreated);
-    println!("  关闭连接数: {}", final_stats.TotalConnectionsClosed);
-    println!("  当前连接数: {}", final_stats.CurrentConnections);
+    println!("  创建连接数: {}", final_stats.total_connections_created);
+    println!("  关闭连接数: {}", final_stats.total_connections_closed);
+    println!("  当前连接数: {}", final_stats.current_connections);
     
     // 最终验证
     assert_eq!(
-        final_stats.CurrentConnections,
-        final_stats.TotalConnectionsCreated - final_stats.TotalConnectionsClosed
+        final_stats.current_connections,
+        final_stats.total_connections_created - final_stats.total_connections_closed
     );
 }

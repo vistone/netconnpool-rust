@@ -4,7 +4,7 @@
 // 性能基准测试
 
 use netconnpool::*;
-use netconnpool::config::DefaultConfig;
+use netconnpool::config::default_config;
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
 use std::thread;
@@ -24,18 +24,18 @@ fn benchmark_get_put_operations() {
     let listener = create_test_server();
     let addr = get_server_addr(&listener);
     
-    let mut config = DefaultConfig();
-    config.Dialer = Some(Box::new(move || {
+    let mut config = default_config();
+    config.dialer = Some(Box::new(move || {
         TcpStream::connect(&addr)
             .map(|s| ConnectionType::Tcp(s))
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }));
     let max_conns = 100;
-    config.MaxConnections = max_conns;
-    config.MinConnections = 10; // 预热连接
-    config.EnableStats = true;
+    config.max_connections = max_conns;
+    config.min_connections = 10; // 预热连接
+    config.enable_stats = true;
     
-    let pool = Arc::new(Pool::NewPool(config).unwrap());
+    let pool = Arc::new(Pool::new(config).unwrap());
     
     // 等待预热完成
     thread::sleep(Duration::from_millis(100));
@@ -44,20 +44,20 @@ fn benchmark_get_put_operations() {
     let start = Instant::now();
     
     for _ in 0..iterations {
-        if let Ok(conn) = pool.Get() {
-            let _ = pool.Put(conn);
+        if let Ok(conn) = pool.get() {
+            let _ = pool.put(conn);
         }
     }
     
     let duration = start.elapsed();
-    let stats = pool.Stats();
+    let stats = pool.stats();
     
     println!("获取/归还操作基准测试:");
     println!("  迭代数: {}", iterations);
     println!("  总耗时: {:?}", duration);
     println!("  平均耗时: {:?} ns/op", duration.as_nanos() / iterations);
     println!("  吞吐量: {:.2} ops/sec", iterations as f64 / duration.as_secs_f64());
-    println!("  连接复用率: {:.2}%", stats.AverageReuseCount * 100.0);
+    println!("  连接复用率: {:.2}%", stats.average_reuse_count * 100.0);
     
     // 性能要求：每秒至少10万次操作
     let ops_per_sec = iterations as f64 / duration.as_secs_f64();
@@ -70,18 +70,18 @@ fn benchmark_concurrent_get_put() {
     let listener = create_test_server();
     let addr = get_server_addr(&listener);
     
-    let mut config = DefaultConfig();
-    config.Dialer = Some(Box::new(move || {
+    let mut config = default_config();
+    config.dialer = Some(Box::new(move || {
         TcpStream::connect(&addr)
             .map(|s| ConnectionType::Tcp(s))
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }));
     let max_conns = 100;
-    config.MaxConnections = max_conns;
-    config.MinConnections = 20;
-    config.EnableStats = true;
+    config.max_connections = max_conns;
+    config.min_connections = 20;
+    config.enable_stats = true;
     
-    let pool = Arc::new(Pool::NewPool(config).unwrap());
+    let pool = Arc::new(Pool::new(config).unwrap());
     
     // 等待预热完成
     thread::sleep(Duration::from_millis(100));
@@ -96,8 +96,8 @@ fn benchmark_concurrent_get_put() {
             let pool = pool.clone();
             thread::spawn(move || {
                 for _ in 0..operations_per_thread {
-                    if let Ok(conn) = pool.Get() {
-                        let _ = pool.Put(conn);
+                    if let Ok(conn) = pool.get() {
+                        let _ = pool.put(conn);
                     }
                 }
             })
@@ -109,7 +109,7 @@ fn benchmark_concurrent_get_put() {
     }
     
     let duration = start.elapsed();
-    let stats = pool.Stats();
+    let stats = pool.stats();
     
     println!("并发获取/归还基准测试:");
     println!("  线程数: {}", num_threads);
@@ -117,7 +117,7 @@ fn benchmark_concurrent_get_put() {
     println!("  总操作数: {}", total_operations);
     println!("  总耗时: {:?}", duration);
     println!("  吞吐量: {:.2} ops/sec", total_operations as f64 / duration.as_secs_f64());
-    println!("  连接复用率: {:.2}%", stats.AverageReuseCount * 100.0);
+    println!("  连接复用率: {:.2}%", stats.average_reuse_count * 100.0);
     
     let ops_per_sec = total_operations as f64 / duration.as_secs_f64();
     assert!(ops_per_sec > 50000.0, "并发吞吐量应该超过50000 ops/sec");
@@ -129,25 +129,25 @@ fn benchmark_connection_creation() {
     let listener = create_test_server();
     let addr = get_server_addr(&listener);
     
-    let mut config = DefaultConfig();
-    config.Dialer = Some(Box::new(move || {
+    let mut config = default_config();
+    config.dialer = Some(Box::new(move || {
         TcpStream::connect(&addr)
             .map(|s| ConnectionType::Tcp(s))
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }));
     let max_conns = 1000;
-    config.MaxConnections = max_conns;
-    config.MinConnections = 0;
-    config.EnableStats = true;
+    config.max_connections = max_conns;
+    config.min_connections = 0;
+    config.enable_stats = true;
     
-    let pool = Arc::new(Pool::NewPool(config).unwrap());
+    let pool = Arc::new(Pool::new(config).unwrap());
     
     let num_connections = 100;
     let start = Instant::now();
     
     let mut connections = Vec::new();
     for _ in 0..num_connections {
-        if let Ok(conn) = pool.Get() {
+        if let Ok(conn) = pool.get() {
             connections.push(conn);
         }
     }
@@ -156,10 +156,10 @@ fn benchmark_connection_creation() {
     
     // 归还所有连接
     for conn in connections {
-        let _ = pool.Put(conn);
+        let _ = pool.put(conn);
     }
     
-    let stats = pool.Stats();
+    let stats = pool.stats();
     
     println!("连接创建基准测试:");
     println!("  创建连接数: {}", num_connections);
@@ -177,23 +177,23 @@ fn benchmark_stats_collection() {
     let listener = create_test_server();
     let addr = get_server_addr(&listener);
     
-    let mut config = DefaultConfig();
-    config.Dialer = Some(Box::new(move || {
+    let mut config = default_config();
+    config.dialer = Some(Box::new(move || {
         TcpStream::connect(&addr)
             .map(|s| ConnectionType::Tcp(s))
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }));
     let max_conns = 100;
-    config.MaxConnections = max_conns;
-    config.MinConnections = 0;
-    config.EnableStats = true;
+    config.max_connections = max_conns;
+    config.min_connections = 0;
+    config.enable_stats = true;
     
-    let pool = Arc::new(Pool::NewPool(config).unwrap());
+    let pool = Arc::new(Pool::new(config).unwrap());
     
     // 执行一些操作
     for _ in 0..1000 {
-        if let Ok(conn) = pool.Get() {
-            let _ = pool.Put(conn);
+        if let Ok(conn) = pool.get() {
+            let _ = pool.put(conn);
         }
     }
     
@@ -202,7 +202,7 @@ fn benchmark_stats_collection() {
     let start = Instant::now();
     
     for _ in 0..iterations {
-        let _ = pool.Stats();
+        let _ = pool.stats();
     }
     
     let duration = start.elapsed();

@@ -4,7 +4,7 @@
 // 全面性能测试套件 - 记录速度、时间、IO吞吐量等关键指标
 
 use netconnpool::*;
-use netconnpool::config::{DefaultConfig, ConnectionType};
+use netconnpool::config::{default_config, ConnectionType};
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
 use std::thread;
@@ -64,9 +64,9 @@ fn test_get_put_throughput() {
     let listener = create_test_server();
     let addr = get_server_addr(&listener);
     
-    let mut config = DefaultConfig();
+    let mut config = default_config();
     let max_conns = 100;
-    config.Dialer = Some(Box::new({
+    config.dialer = Some(Box::new({
         let addr = addr.clone();
         move || {
             TcpStream::connect(&addr)
@@ -74,11 +74,11 @@ fn test_get_put_throughput() {
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }
     }));
-    config.MaxConnections = max_conns;
-    config.MinConnections = 20; // 预热
-    config.EnableStats = true;
+    config.max_connections = max_conns;
+    config.min_connections = 20; // 预热
+    config.enable_stats = true;
     
-    let pool = Arc::new(Pool::NewPool(config).unwrap());
+    let pool = Arc::new(Pool::new(config).unwrap());
     
     // 等待预热完成
     thread::sleep(Duration::from_millis(200));
@@ -89,8 +89,8 @@ fn test_get_put_throughput() {
     let start = Instant::now();
     for _ in 0..iterations {
         let op_start = Instant::now();
-        if let Ok(conn) = pool.Get() {
-            let _ = pool.Put(conn);
+        if let Ok(conn) = pool.get() {
+            let _ = pool.put(conn);
         }
         latencies.push(op_start.elapsed().as_nanos() as u64);
     }
@@ -138,9 +138,9 @@ fn test_concurrent_throughput() {
     let listener = create_test_server();
     let addr = get_server_addr(&listener);
     
-    let mut config = DefaultConfig();
+    let mut config = default_config();
     let max_conns = 200;
-    config.Dialer = Some(Box::new({
+    config.dialer = Some(Box::new({
         let addr = addr.clone();
         move || {
             TcpStream::connect(&addr)
@@ -148,11 +148,11 @@ fn test_concurrent_throughput() {
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }
     }));
-    config.MaxConnections = max_conns;
-    config.MinConnections = 50;
-    config.EnableStats = true;
+    config.max_connections = max_conns;
+    config.min_connections = 50;
+    config.enable_stats = true;
     
-    let pool = Arc::new(Pool::NewPool(config).unwrap());
+    let pool = Arc::new(Pool::new(config).unwrap());
     thread::sleep(Duration::from_millis(200));
     
     let num_threads = 100;
@@ -165,8 +165,8 @@ fn test_concurrent_throughput() {
             let pool = pool.clone();
             thread::spawn(move || {
                 for _ in 0..operations_per_thread {
-                    if let Ok(conn) = pool.Get() {
-                        let _ = pool.Put(conn);
+                    if let Ok(conn) = pool.get() {
+                        let _ = pool.put(conn);
                     }
                 }
             })
@@ -225,9 +225,9 @@ fn test_io_throughput() {
     
     thread::sleep(Duration::from_millis(100));
     
-    let mut config = DefaultConfig();
+    let mut config = default_config();
     let max_conns = 50;
-    config.Dialer = Some(Box::new({
+    config.dialer = Some(Box::new({
         let addr = addr.clone();
         move || {
             TcpStream::connect(&addr)
@@ -235,11 +235,11 @@ fn test_io_throughput() {
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }
     }));
-    config.MaxConnections = max_conns;
-    config.MinConnections = 10;
-    config.EnableStats = true;
+    config.max_connections = max_conns;
+    config.min_connections = 10;
+    config.enable_stats = true;
     
-    let pool = Arc::new(Pool::NewPool(config).unwrap());
+    let pool = Arc::new(Pool::new(config).unwrap());
     thread::sleep(Duration::from_millis(200));
     
     let data_size = 1024; // 1KB per operation
@@ -248,8 +248,8 @@ fn test_io_throughput() {
     
     let start = Instant::now();
     for _ in 0..iterations {
-        if let Ok(conn) = pool.Get() {
-            if let Some(stream_ref) = conn.GetTcpConn() {
+        if let Ok(conn) = pool.get() {
+            if let Some(stream_ref) = conn.tcp_conn() {
                 if let Ok(mut stream) = stream_ref.try_clone() {
                     let data = vec![0u8; data_size];
                     if stream.write_all(&data).is_ok() {
@@ -260,7 +260,7 @@ fn test_io_throughput() {
                     }
                 }
             }
-            let _ = pool.Put(conn);
+            let _ = pool.put(conn);
         }
     }
     let duration = start.elapsed();
@@ -299,9 +299,9 @@ fn test_latency_distribution() {
     let listener = create_test_server();
     let addr = get_server_addr(&listener);
     
-    let mut config = DefaultConfig();
+    let mut config = default_config();
     let max_conns = 100;
-    config.Dialer = Some(Box::new({
+    config.dialer = Some(Box::new({
         let addr = addr.clone();
         move || {
             TcpStream::connect(&addr)
@@ -309,11 +309,11 @@ fn test_latency_distribution() {
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }
     }));
-    config.MaxConnections = max_conns;
-    config.MinConnections = 20;
-    config.EnableStats = true;
+    config.max_connections = max_conns;
+    config.min_connections = 20;
+    config.enable_stats = true;
     
-    let pool = Arc::new(Pool::NewPool(config).unwrap());
+    let pool = Arc::new(Pool::new(config).unwrap());
     thread::sleep(Duration::from_millis(200));
     
     let iterations = 50000;
@@ -321,10 +321,10 @@ fn test_latency_distribution() {
     
     for _ in 0..iterations {
         let op_start = Instant::now();
-        if let Ok(conn) = pool.Get() {
+        if let Ok(conn) = pool.get() {
             let get_time = op_start.elapsed();
             let put_start = Instant::now();
-            let _ = pool.Put(conn);
+            let _ = pool.put(conn);
             let put_time = put_start.elapsed();
             latencies.push((get_time.as_nanos() as u64, put_time.as_nanos() as u64));
         }
@@ -382,9 +382,9 @@ fn test_connection_creation_speed() {
     let listener = create_test_server();
     let addr = get_server_addr(&listener);
     
-    let mut config = DefaultConfig();
+    let mut config = default_config();
     let max_conns = 1000;
-    config.Dialer = Some(Box::new({
+    config.dialer = Some(Box::new({
         let addr = addr.clone();
         move || {
             TcpStream::connect(&addr)
@@ -392,11 +392,11 @@ fn test_connection_creation_speed() {
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }
     }));
-    config.MaxConnections = max_conns;
-    config.MinConnections = 0;
-    config.EnableStats = true;
+    config.max_connections = max_conns;
+    config.min_connections = 0;
+    config.enable_stats = true;
     
-    let pool = Arc::new(Pool::NewPool(config).unwrap());
+    let pool = Arc::new(Pool::new(config).unwrap());
     
     let num_connections = 500;
     let mut creation_times = Vec::with_capacity(num_connections);
@@ -404,9 +404,9 @@ fn test_connection_creation_speed() {
     let start = Instant::now();
     for _ in 0..num_connections {
         let create_start = Instant::now();
-        if let Ok(conn) = pool.Get() {
+        if let Ok(conn) = pool.get() {
             creation_times.push(create_start.elapsed().as_nanos() as u64);
-            let _ = pool.Put(conn);
+            let _ = pool.put(conn);
         }
     }
     let total_duration = start.elapsed();
@@ -452,9 +452,9 @@ fn test_high_load_io_throughput() {
     
     thread::sleep(Duration::from_millis(100));
     
-    let mut config = DefaultConfig();
+    let mut config = default_config();
     let max_conns = 100;
-    config.Dialer = Some(Box::new({
+    config.dialer = Some(Box::new({
         let addr = addr.clone();
         move || {
             TcpStream::connect(&addr)
@@ -462,17 +462,17 @@ fn test_high_load_io_throughput() {
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }
     }));
-    config.MaxConnections = max_conns;
-    config.MinConnections = 20;
-    config.EnableStats = true;
+    config.max_connections = max_conns;
+    config.min_connections = 20;
+    config.enable_stats = true;
     
-    let pool = Arc::new(Pool::NewPool(config).unwrap());
+    let pool = Arc::new(Pool::new(config).unwrap());
     thread::sleep(Duration::from_millis(200));
     
     let num_threads = 50;
     let operations_per_thread = 1000;
     let data_size = 8192; // 8KB per operation
-    let mut total_bytes = Arc::new(std::sync::Mutex::new(0u64));
+    let total_bytes = Arc::new(std::sync::Mutex::new(0u64));
     
     let start = Instant::now();
     let handles: Vec<_> = (0..num_threads)
@@ -481,8 +481,8 @@ fn test_high_load_io_throughput() {
             let total_bytes = total_bytes.clone();
             thread::spawn(move || {
                 for _ in 0..operations_per_thread {
-                    if let Ok(conn) = pool.Get() {
-                        if let Some(stream_ref) = conn.GetTcpConn() {
+                    if let Ok(conn) = pool.get() {
+                        if let Some(stream_ref) = conn.tcp_conn() {
                             if let Ok(mut stream) = stream_ref.try_clone() {
                                 let data = vec![0u8; data_size];
                                 if stream.write_all(&data).is_ok() {
@@ -493,7 +493,7 @@ fn test_high_load_io_throughput() {
                                 }
                             }
                         }
-                        let _ = pool.Put(conn);
+                        let _ = pool.put(conn);
                     }
                 }
             })
@@ -535,9 +535,9 @@ fn test_stats_collection_performance() {
     let listener = create_test_server();
     let addr = get_server_addr(&listener);
     
-    let mut config = DefaultConfig();
+    let mut config = default_config();
     let max_conns = 100;
-    config.Dialer = Some(Box::new({
+    config.dialer = Some(Box::new({
         let addr = addr.clone();
         move || {
             TcpStream::connect(&addr)
@@ -545,15 +545,15 @@ fn test_stats_collection_performance() {
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }
     }));
-    config.MaxConnections = max_conns;
-    config.EnableStats = true;
+    config.max_connections = max_conns;
+    config.enable_stats = true;
     
-    let pool = Arc::new(Pool::NewPool(config).unwrap());
+    let pool = Arc::new(Pool::new(config).unwrap());
     
     // 执行一些操作
     for _ in 0..10000 {
-        if let Ok(conn) = pool.Get() {
-            let _ = pool.Put(conn);
+        if let Ok(conn) = pool.get() {
+            let _ = pool.put(conn);
         }
     }
     
@@ -563,7 +563,7 @@ fn test_stats_collection_performance() {
     let start = Instant::now();
     for _ in 0..iterations {
         let op_start = Instant::now();
-        let _stats = pool.Stats();
+        let stats = pool.stats();
         latencies.push(op_start.elapsed().as_nanos() as u64);
     }
     let duration = start.elapsed();
@@ -611,9 +611,9 @@ fn test_comprehensive_performance() {
     
     thread::sleep(Duration::from_millis(100));
     
-    let mut config = DefaultConfig();
+    let mut config = default_config();
     let max_conns = 200;
-    config.Dialer = Some(Box::new({
+    config.dialer = Some(Box::new({
         let addr = addr.clone();
         move || {
             TcpStream::connect(&addr)
@@ -621,11 +621,11 @@ fn test_comprehensive_performance() {
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }
     }));
-    config.MaxConnections = max_conns;
-    config.MinConnections = 50;
-    config.EnableStats = true;
+    config.max_connections = max_conns;
+    config.min_connections = 50;
+    config.enable_stats = true;
     
-    let pool = Arc::new(Pool::NewPool(config).unwrap());
+    let pool = Arc::new(Pool::new(config).unwrap());
     thread::sleep(Duration::from_millis(200));
     
     let num_threads = 100;
@@ -643,14 +643,14 @@ fn test_comprehensive_performance() {
                     match i % 3 {
                         0 => {
                             // 纯获取/归还
-                            if let Ok(conn) = pool.Get() {
-                                let _ = pool.Put(conn);
+                            if let Ok(conn) = pool.get() {
+                                let _ = pool.put(conn);
                             }
                         }
                         1 => {
                             // 带IO操作
-                            if let Ok(conn) = pool.Get() {
-                            if let Some(stream_ref) = conn.GetTcpConn() {
+                            if let Ok(conn) = pool.get() {
+                            if let Some(stream_ref) = conn.tcp_conn() {
                                 if let Ok(mut stream) = stream_ref.try_clone() {
                                     let data = vec![0u8; 512];
                                     if stream.write_all(&data).is_ok() {
@@ -661,12 +661,12 @@ fn test_comprehensive_performance() {
                                     }
                                 }
                             }
-                                let _ = pool.Put(conn);
+                                let _ = pool.put(conn);
                             }
                         }
                         _ => {
                             // 获取统计信息
-                            let _stats = pool.Stats();
+                            let stats = pool.stats();
                         }
                     }
                 }
@@ -680,7 +680,7 @@ fn test_comprehensive_performance() {
     let duration = start.elapsed();
     
     let total_io = *total_io_bytes.lock().unwrap();
-    let stats = pool.Stats();
+    let stats = pool.stats();
     
     println!("\n========================================");
     println!("综合性能测试");
@@ -692,18 +692,18 @@ fn test_comprehensive_performance() {
     println!("操作吞吐量: {:.2} ops/sec", total_operations as f64 / duration.as_secs_f64());
     println!("IO吞吐量: {:.2} MB/s", total_io as f64 / duration.as_secs_f64() / 1_000_000.0);
     println!("\n连接池统计:");
-    println!("  创建连接数: {}", stats.TotalConnectionsCreated);
-    println!("  成功获取数: {}", stats.SuccessfulGets);
-    println!("  连接复用数: {}", stats.TotalConnectionsReused);
-    println!("  连接复用率: {:.2}%", stats.AverageReuseCount * 100.0);
+    println!("  创建连接数: {}", stats.total_connections_created);
+    println!("  成功获取数: {}", stats.successful_gets);
+    println!("  连接复用数: {}", stats.total_connections_reused);
+    println!("  连接复用率: {:.2}%", stats.average_reuse_count * 100.0);
     println!("========================================\n");
     
     // 性能要求
     let ops_per_sec = total_operations as f64 / duration.as_secs_f64();
     assert!(ops_per_sec > 100000.0, 
         "综合操作吞吐量应该超过100,000 ops/sec，实际: {:.2}", ops_per_sec);
-    assert!(stats.AverageReuseCount > 5.0, 
-        "连接复用率应该超过5，实际: {:.2}", stats.AverageReuseCount);
+    assert!(stats.average_reuse_count > 5.0, 
+        "连接复用率应该超过5，实际: {:.2}", stats.average_reuse_count);
     
     drop(server_handle);
 }

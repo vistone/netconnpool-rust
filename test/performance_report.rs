@@ -4,7 +4,7 @@
 // 性能测试报告生成器
 
 use netconnpool::*;
-use netconnpool::config::{DefaultConfig, ConnectionType};
+use netconnpool::config::{default_config, ConnectionType};
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
 use std::thread;
@@ -54,8 +54,8 @@ fn generate_performance_report() {
     // 测试1: 单线程吞吐量
     println!("【测试1】单线程获取/归还吞吐量测试");
     println!("────────────────────────────────────────────────────────────");
-    let mut config = DefaultConfig();
-    config.Dialer = Some(Box::new({
+    let mut config = default_config();
+    config.dialer = Some(Box::new({
         let addr = addr.clone();
         move || {
             TcpStream::connect(&addr)
@@ -63,11 +63,11 @@ fn generate_performance_report() {
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }
     }));
-    config.MaxConnections = 100;
-    config.MinConnections = 20;
-    config.EnableStats = true;
+    config.max_connections = 100;
+    config.min_connections = 20;
+    config.enable_stats = true;
     
-    let pool = Arc::new(Pool::NewPool(config).unwrap());
+    let pool = Arc::new(Pool::new(config).unwrap());
     thread::sleep(Duration::from_millis(200));
     
     let iterations = 200000;
@@ -76,10 +76,10 @@ fn generate_performance_report() {
     let start = Instant::now();
     for _ in 0..iterations {
         let op_start = Instant::now();
-        if let Ok(conn) = pool.Get() {
+        if let Ok(conn) = pool.get() {
             let get_time = op_start.elapsed();
             let put_start = Instant::now();
-            let _ = pool.Put(conn);
+            let _ = pool.put(conn);
             let put_time = put_start.elapsed();
             latencies.push((get_time.as_nanos() as u64, put_time.as_nanos() as u64));
         }
@@ -118,8 +118,8 @@ fn generate_performance_report() {
             let pool = pool.clone();
             thread::spawn(move || {
                 for _ in 0..ops_per_thread {
-                    if let Ok(conn) = pool.Get() {
-                        let _ = pool.Put(conn);
+                    if let Ok(conn) = pool.get() {
+                        let _ = pool.put(conn);
                     }
                 }
             })
@@ -146,7 +146,7 @@ fn generate_performance_report() {
     let io_threads = 50;
     let io_ops_per_thread = 2000;
     let io_data_size = 4096; // 4KB
-    let mut total_io_bytes = Arc::new(std::sync::Mutex::new(0u64));
+    let total_io_bytes = Arc::new(std::sync::Mutex::new(0u64));
     
     let start = Instant::now();
     let io_handles: Vec<_> = (0..io_threads)
@@ -155,8 +155,8 @@ fn generate_performance_report() {
             let total_io_bytes = total_io_bytes.clone();
             thread::spawn(move || {
                 for _ in 0..io_ops_per_thread {
-                    if let Ok(conn) = pool.Get() {
-                        if let Some(stream_ref) = conn.GetTcpConn() {
+                    if let Ok(conn) = pool.get() {
+                        if let Some(stream_ref) = conn.tcp_conn() {
                             if let Ok(mut stream) = stream_ref.try_clone() {
                                 let data = vec![0u8; io_data_size];
                                 if stream.write_all(&data).is_ok() {
@@ -167,7 +167,7 @@ fn generate_performance_report() {
                                 }
                             }
                         }
-                        let _ = pool.Put(conn);
+                        let _ = pool.put(conn);
                     }
                 }
             })
@@ -200,9 +200,9 @@ fn generate_performance_report() {
     let start = Instant::now();
     for _ in 0..create_count {
         let create_start = Instant::now();
-        if let Ok(conn) = pool.Get() {
+        if let Ok(conn) = pool.get() {
             creation_times.push(create_start.elapsed().as_nanos() as u64);
-            let _ = pool.Put(conn);
+            let _ = pool.put(conn);
         }
     }
     let create_duration = start.elapsed();
@@ -227,7 +227,7 @@ fn generate_performance_report() {
     let start = Instant::now();
     for _ in 0..stats_iterations {
         let stats_start = Instant::now();
-        let _stats = pool.Stats();
+        let stats = pool.stats();
         stats_latencies.push(stats_start.elapsed().as_nanos() as u64);
     }
     let stats_duration = start.elapsed();
@@ -244,17 +244,17 @@ fn generate_performance_report() {
     println!();
     
     // 最终统计
-    let final_stats = pool.Stats();
+    let final_stats = pool.stats();
     println!("【最终统计信息】");
     println!("────────────────────────────────────────────────────────────");
-    println!("  总创建连接数: {}", final_stats.TotalConnectionsCreated);
-    println!("  总关闭连接数: {}", final_stats.TotalConnectionsClosed);
-    println!("  当前连接数: {}", final_stats.CurrentConnections);
-    println!("  成功获取数: {}", final_stats.SuccessfulGets);
-    println!("  失败获取数: {}", final_stats.FailedGets);
-    println!("  连接复用数: {}", final_stats.TotalConnectionsReused);
-    println!("  连接复用率: {:.2}%", final_stats.AverageReuseCount * 100.0);
-    println!("  平均获取时间: {:?}", final_stats.AverageGetTime);
+    println!("  总创建连接数: {}", final_stats.total_connections_created);
+    println!("  总关闭连接数: {}", final_stats.total_connections_closed);
+    println!("  当前连接数: {}", final_stats.current_connections);
+    println!("  成功获取数: {}", final_stats.successful_gets);
+    println!("  失败获取数: {}", final_stats.failed_gets);
+    println!("  连接复用数: {}", final_stats.total_connections_reused);
+    println!("  连接复用率: {:.2}%", final_stats.average_reuse_count * 100.0);
+    println!("  平均获取时间: {:?}", final_stats.average_get_time);
     println!();
     
     // 性能总结
@@ -267,7 +267,7 @@ fn generate_performance_report() {
     println!("IO吞吐量:         {:.2} MB/s", io_throughput / 1_000_000.0);
     println!("连接创建速率:     {:.2} conn/sec", create_count as f64 / create_duration.as_secs_f64());
     println!("统计收集吞吐量:   {:.2} stats/sec", stats_iterations as f64 / stats_duration.as_secs_f64());
-    println!("连接复用率:       {:.2}%", final_stats.AverageReuseCount * 100.0);
+    println!("连接复用率:       {:.2}%", final_stats.average_reuse_count * 100.0);
     println!();
     
     // 性能评估
@@ -301,11 +301,11 @@ fn generate_performance_report() {
     }
     
     total += 1;
-    if final_stats.AverageReuseCount > 5.0 {
-        println!("✅ 连接复用率: 优秀 ({:.2}%)", final_stats.AverageReuseCount * 100.0);
+    if final_stats.average_reuse_count > 5.0 {
+        println!("✅ 连接复用率: 优秀 ({:.2}%)", final_stats.average_reuse_count * 100.0);
         passed += 1;
     } else {
-        println!("❌ 连接复用率: 需要优化 ({:.2}%)", final_stats.AverageReuseCount * 100.0);
+        println!("❌ 连接复用率: 需要优化 ({:.2}%)", final_stats.average_reuse_count * 100.0);
     }
     
     println!();

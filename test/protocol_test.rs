@@ -14,17 +14,17 @@ mod tests {
 
     #[test]
     fn test_parse_protocol() {
-        assert_eq!(ParseProtocol("TCP"), Protocol::TCP);
-        assert_eq!(ParseProtocol("UDP"), Protocol::UDP);
-        assert_eq!(ParseProtocol("tcp"), Protocol::TCP);
-        assert_eq!(ParseProtocol("unknown"), Protocol::Unknown);
+        assert_eq!(parse_protocol("TCP"), Protocol::TCP);
+        assert_eq!(parse_protocol("UDP"), Protocol::UDP);
+        assert_eq!(parse_protocol("tcp"), Protocol::TCP);
+        assert_eq!(parse_protocol("unknown"), Protocol::Unknown);
     }
 
     #[test]
     fn test_protocol_methods() {
-        assert!(Protocol::TCP.IsTCP());
-        assert!(!Protocol::TCP.IsUDP());
-        assert!(Protocol::UDP.IsUDP());
-        assert!(!Protocol::UDP.IsTCP());
+        assert!(Protocol::TCP.is_tcp());
+        assert!(!Protocol::TCP.is_udp());
+        assert!(Protocol::UDP.is_udp());
+        assert!(!Protocol::UDP.is_tcp());
     }
 }
