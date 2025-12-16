@@ -186,10 +186,15 @@ fn test_long_running() {
     println!("    创建连接数: {}", final_stats.total_connections_created);
     println!("    关闭连接数: {}", final_stats.total_connections_closed);
     println!("    当前连接数: {}", final_stats.current_connections);
-    println!(
-        "    连接复用率: {:.2}%",
-        final_stats.average_reuse_count * 100.0
-    );
+    // average_reuse_count 是平均每个连接的复用次数，不是复用率
+    // 复用率 = total_connections_reused / successful_gets * 100%
+    let reuse_rate = if final_stats.successful_gets > 0 {
+        final_stats.total_connections_reused as f64 / final_stats.successful_gets as f64 * 100.0
+    } else {
+        0.0
+    };
+    println!("    连接复用率: {:.2}%", reuse_rate);
+    println!("    平均复用次数: {:.2}", final_stats.average_reuse_count);
 
     assert!(total_ops > 0, "应该有成功的操作");
     assert!(final_stats.current_connections <= max_conns as i64);
@@ -268,6 +273,7 @@ fn test_connection_pool_exhaustion() {
     config.max_connections = max_conns;
     config.min_connections = 0;
     config.enable_stats = true;
+    config.get_connection_timeout = Duration::from_millis(100); // 设置短超时，确保快速失败
 
     let pool = Arc::new(Pool::new(config).unwrap());
 
@@ -355,10 +361,18 @@ fn test_rapid_acquire_release() {
         iterations as f64 / duration.as_secs_f64()
     );
     println!("  创建连接数: {}", stats.total_connections_created);
-    println!("  连接复用率: {:.2}%", stats.average_reuse_count * 100.0);
+    // average_reuse_count 是平均每个连接的复用次数，不是复用率
+    // 复用率 = total_connections_reused / successful_gets * 100%
+    let reuse_rate = if stats.successful_gets > 0 {
+        stats.total_connections_reused as f64 / stats.successful_gets as f64 * 100.0
+    } else {
+        0.0
+    };
+    println!("  连接复用率: {:.2}%", reuse_rate);
+    println!("  平均复用次数: {:.2}", stats.average_reuse_count);
 
-    // 连接复用率应该很高
-    assert!(stats.average_reuse_count > 10.0, "连接复用率应该很高");
+    // 连接复用率应该很高（> 95%）
+    assert!(reuse_rate > 95.0, "连接复用率应该超过95%，实际: {:.2}%", reuse_rate);
 
     stop.store(true, Ordering::Relaxed);
     let _ = server_handle.join();

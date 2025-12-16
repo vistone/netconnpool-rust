@@ -60,7 +60,15 @@ fn benchmark_get_put_operations() {
         "  吞吐量: {:.2} ops/sec",
         iterations as f64 / duration.as_secs_f64()
     );
-    println!("  连接复用率: {:.2}%", stats.average_reuse_count * 100.0);
+    // average_reuse_count 是平均每个连接的复用次数，不是复用率
+    // 复用率 = total_connections_reused / successful_gets * 100%
+    let reuse_rate = if stats.successful_gets > 0 {
+        stats.total_connections_reused as f64 / stats.successful_gets as f64 * 100.0
+    } else {
+        0.0
+    };
+    println!("  连接复用率: {:.2}%", reuse_rate);
+    println!("  平均复用次数: {:.2}", stats.average_reuse_count);
 
     // 性能要求：每秒至少10万次操作
     let ops_per_sec = iterations as f64 / duration.as_secs_f64();
@@ -123,7 +131,15 @@ fn benchmark_concurrent_get_put() {
         "  吞吐量: {:.2} ops/sec",
         total_operations as f64 / duration.as_secs_f64()
     );
-    println!("  连接复用率: {:.2}%", stats.average_reuse_count * 100.0);
+    // average_reuse_count 是平均每个连接的复用次数，不是复用率
+    // 复用率 = total_connections_reused / successful_gets * 100%
+    let reuse_rate = if stats.successful_gets > 0 {
+        stats.total_connections_reused as f64 / stats.successful_gets as f64 * 100.0
+    } else {
+        0.0
+    };
+    println!("  连接复用率: {:.2}%", reuse_rate);
+    println!("  平均复用次数: {:.2}", stats.average_reuse_count);
 
     let ops_per_sec = total_operations as f64 / duration.as_secs_f64();
     assert!(ops_per_sec > 50000.0, "并发吞吐量应该超过50000 ops/sec");

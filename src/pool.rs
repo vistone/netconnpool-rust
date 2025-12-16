@@ -9,6 +9,7 @@ use crate::mode::PoolMode;
 use crate::protocol::Protocol;
 use crate::stats::StatsCollector;
 use crate::udp_utils::clear_udp_read_buffer;
+use crossbeam::queue::SegQueue;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -55,9 +56,11 @@ struct PoolInner {
     config: Config,
     // 所有存活的连接，用于管理生命周期和后台清理
     all_connections: RwLock<HashMap<u64, Arc<Connection>>>,
-    // 空闲连接池，按 (Protocol, IPVersion) 分桶
+    // 空闲连接池，按 (Protocol, IPVersion) 分桶（使用无锁队列）
     // 0: TCP IPv4, 1: TCP IPv6, 2: UDP IPv4, 3: UDP IPv6
-    idle_connections: [Mutex<Vec<Arc<Connection>>>; 4],
+    idle_connections: [SegQueue<Arc<Connection>>; 4],
+    // 每个桶的当前大小（原子计数器，用于 max_idle_connections 限制）
+    idle_counts: [AtomicUsize; 4],
     closed: AtomicBool,
     // 当前借出的连接数（不依赖 enable_stats）
     active_count: AtomicUsize,
@@ -104,10 +107,16 @@ impl Pool {
             config,
             all_connections: RwLock::new(HashMap::new()),
             idle_connections: [
-                Mutex::new(Vec::new()),
-                Mutex::new(Vec::new()),
-                Mutex::new(Vec::new()),
-                Mutex::new(Vec::new()),
+                SegQueue::new(),
+                SegQueue::new(),
+                SegQueue::new(),
+                SegQueue::new(),
+            ],
+            idle_counts: [
+                AtomicUsize::new(0),
+                AtomicUsize::new(0),
+                AtomicUsize::new(0),
+                AtomicUsize::new(0),
             ],
             closed: AtomicBool::new(false),
             active_count: AtomicUsize::new(0),
@@ -376,11 +385,13 @@ impl PoolInner {
         // 1) 先关闭所有 idle 连接（不影响正在使用的连接）
         // 为了保持 idle 统计一致性，这里显式扣减 idle 统计（因为我们会直接 drain bucket）
         let mut idle_conns: Vec<Arc<Connection>> = Vec::new();
-        for idle in &self.idle_connections {
-            if let Ok(mut guard) = idle.lock() {
-                let drained = std::mem::take(&mut *guard);
-                idle_conns.extend(drained);
+        for (idx, idle) in self.idle_connections.iter().enumerate() {
+            // 无锁队列：持续 pop 直到为空
+            while let Some(conn) = idle.pop() {
+                idle_conns.push(conn);
             }
+            // 重置计数器
+            self.idle_counts[idx].store(0, Ordering::Relaxed);
         }
 
         for conn in &idle_conns {
@@ -409,10 +420,10 @@ impl PoolInner {
         // 3) 最后兜底：关闭所有仍存活的连接（可能包含泄漏/长期占用）
         let conns: Vec<Arc<Connection>> = {
             let connections = self.all_connections.read().map_err(|e| {
-                NetConnPoolError::IoError(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("获取连接列表失败: {}", e),
-                ))
+                NetConnPoolError::IoError(std::io::Error::other(format!(
+                    "获取连接列表失败: {}",
+                    e
+                )))
             })?;
             connections.values().cloned().collect()
         };
@@ -510,19 +521,13 @@ impl PoolInner {
                 });
             }
 
-            // 1. 尝试从空闲池获取
+            // 1. 尝试从空闲池获取（无锁操作）
             for &idx in &bucket_indices {
-                let conn = {
-                    let mut idle = self.idle_connections[idx].lock().map_err(|e| {
-                        NetConnPoolError::IoError(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("获取空闲连接池锁失败: {}", e),
-                        ))
-                    })?;
-                    idle.pop()
-                };
+                let conn = self.idle_connections[idx].pop();
 
                 if let Some(conn) = conn {
+                    // 更新计数器
+                    self.idle_counts[idx].fetch_sub(1, Ordering::Relaxed);
                     // 从 idle 移除即应更新 idle 统计（无论最终是否可用）
                     if let Some(stats) = &self.stats_collector {
                         self.update_stats_on_idle_pop(stats, &conn);
@@ -573,10 +578,10 @@ impl PoolInner {
                             .all_connections
                             .read()
                             .map_err(|e| {
-                                NetConnPoolError::IoError(std::io::Error::new(
-                                    std::io::ErrorKind::Other,
-                                    format!("读取连接数失败: {}", e),
-                                ))
+                                NetConnPoolError::IoError(std::io::Error::other(format!(
+                                    "读取连接数失败: {}",
+                                    e
+                                )))
                             })?
                             .len();
                         return Err(NetConnPoolError::PoolExhausted {
@@ -625,10 +630,10 @@ impl PoolInner {
                 .all_connections
                 .read()
                 .map_err(|e| {
-                    NetConnPoolError::IoError(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("读取连接数失败: {}", e),
-                    ))
+                    NetConnPoolError::IoError(std::io::Error::other(format!(
+                        "读取连接数失败: {}",
+                        e
+                    )))
                 })?
                 .len();
             if current >= self.config.max_connections {
@@ -643,7 +648,7 @@ impl PoolInner {
             PoolMode::Client => {
                 if let Some(dialer) = &self.config.dialer {
                     dialer(required_protocol).map_err(|e| {
-                        NetConnPoolError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e))
+                        NetConnPoolError::IoError(std::io::Error::other(e.to_string()))
                     })?
                 } else {
                     return Err(NetConnPoolError::InvalidConfig {
@@ -659,7 +664,7 @@ impl PoolInner {
                         }
                     })?;
                     ConnectionType::Tcp(acceptor(listener).map_err(|e| {
-                        NetConnPoolError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e))
+                        NetConnPoolError::IoError(std::io::Error::other(e.to_string()))
                     })?)
                 } else {
                     return Err(NetConnPoolError::InvalidConfig {
@@ -671,7 +676,7 @@ impl PoolInner {
 
         if let Some(on_created) = &self.config.on_created {
             on_created(&conn_type).map_err(|e| {
-                NetConnPoolError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e))
+                NetConnPoolError::IoError(std::io::Error::other(e.to_string()))
             })?;
         }
 
@@ -720,10 +725,10 @@ impl PoolInner {
         // Insert into map
         {
             let mut connections = self.all_connections.write().map_err(|e| {
-                NetConnPoolError::IoError(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("获取连接映射写锁失败: {}", e),
-                ))
+                NetConnPoolError::IoError(std::io::Error::other(format!(
+                    "获取连接映射写锁失败: {}",
+                    e
+                )))
             })?;
             let current = connections.len();
             if self.config.max_connections > 0 && current >= self.config.max_connections {
@@ -791,24 +796,21 @@ impl PoolInner {
             }
         }
 
-        // Put back to idle list
+        // Put back to idle list (无锁操作)
         if let Some(idx) = Self::get_bucket_index(conn.get_protocol(), conn.get_ip_version()) {
-            // 如果获取锁失败，忽略错误（不影响主流程）
-            if let Ok(mut idle) = self.idle_connections[idx].lock() {
-                // Check max idle
-                if idle.len() < self.config.max_idle_connections {
-                    idle.push(conn.clone());
-                    drop(idle); // Release lock early
+            // 使用原子计数器检查 max_idle_connections（近似值，性能优先）
+            let current_count = self.idle_counts[idx].load(Ordering::Relaxed);
+            if current_count < self.config.max_idle_connections {
+                // 先增加计数器（乐观锁）
+                self.idle_counts[idx].fetch_add(1, Ordering::Relaxed);
+                // 推入队列（无锁操作）
+                self.idle_connections[idx].push(conn.clone());
 
-                    if let Some(stats) = &self.stats_collector {
-                        self.update_stats_on_idle_push(stats, &conn);
-                    }
-                } else {
-                    drop(idle);
-                    let _ = self.remove_connection(&conn);
+                if let Some(stats) = &self.stats_collector {
+                    self.update_stats_on_idle_push(stats, &conn);
                 }
             } else {
-                // 锁获取失败，直接移除连接
+                // 超过最大空闲连接数，直接移除
                 let _ = self.remove_connection(&conn);
             }
         } else {
@@ -835,10 +837,10 @@ impl PoolInner {
 
         {
             let mut connections = self.all_connections.write().map_err(|e| {
-                NetConnPoolError::IoError(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("获取连接映射写锁失败: {}", e),
-                ))
+                NetConnPoolError::IoError(std::io::Error::other(format!(
+                    "获取连接映射写锁失败: {}",
+                    e
+                )))
             })?;
             connections.remove(&conn.id);
         }
@@ -992,19 +994,19 @@ impl PoolInner {
         conn.mark_idle();
 
         if let Some(idx) = Self::get_bucket_index(conn.get_protocol(), conn.get_ip_version()) {
-            if let Ok(mut idle) = self.idle_connections[idx].lock() {
-                if idle.len() < self.config.max_idle_connections {
-                    idle.push(conn.clone());
-                    drop(idle);
-                    if let Some(stats) = &self.stats_collector {
-                        self.update_stats_on_idle_push(stats, &conn);
-                    }
-                } else {
-                    drop(idle);
-                    let _ = self.remove_connection(&conn);
+            // 使用原子计数器检查 max_idle_connections（近似值，性能优先）
+            let current_count = self.idle_counts[idx].load(Ordering::Relaxed);
+            if current_count < self.config.max_idle_connections {
+                // 先增加计数器（乐观锁）
+                self.idle_counts[idx].fetch_add(1, Ordering::Relaxed);
+                // 推入队列（无锁操作）
+                self.idle_connections[idx].push(conn.clone());
+
+                if let Some(stats) = &self.stats_collector {
+                    self.update_stats_on_idle_push(stats, &conn);
                 }
             } else {
-                // 锁获取失败，直接移除连接
+                // 超过最大空闲连接数，直接移除
                 let _ = self.remove_connection(&conn);
             }
         } else {
@@ -1021,20 +1023,44 @@ impl PoolInner {
 
     fn remove_from_idle_if_present(&self, conn: &Arc<Connection>) {
         if let Some(idx) = Self::get_bucket_index(conn.get_protocol(), conn.get_ip_version()) {
-            if let Ok(mut idle) = self.idle_connections[idx].lock() {
-                let before = idle.len();
-                if before == 0 {
-                    return;
-                }
-                idle.retain(|c| c.id != conn.id);
-                let after = idle.len();
-                drop(idle);
+            // 无锁队列没有 retain 方法
+            // 为了性能，我们采用"标记移除"策略：
+            // 1. 连接在队列中时，会在 return_connection 时通过 is_connection_valid_for_borrow 检查被过滤
+            // 2. 这里我们尝试从队列中移除（如果存在），但为了性能，我们限制最大检查次数
+            // 3. 由于无锁队列的特性，这个操作是 best-effort 的
 
-                if before != after {
-                    if let Some(stats) = &self.stats_collector {
-                        // 从 idle 移除一次
-                        self.update_stats_on_idle_pop(stats, conn);
+            const MAX_CHECK: usize = 100; // 最多检查 100 个连接，避免性能问题
+            let mut checked = 0;
+            let mut found = false;
+            let mut temp_vec = Vec::new();
+
+            // 尝试从队列中查找并移除目标连接（限制检查次数）
+            while checked < MAX_CHECK {
+                if let Some(c) = self.idle_connections[idx].pop() {
+                    checked += 1;
+                    if c.id == conn.id {
+                        found = true;
+                        self.idle_counts[idx].fetch_sub(1, Ordering::Relaxed);
+                        // 不将连接放回队列
+                        break;
+                    } else {
+                        temp_vec.push(c);
                     }
+                } else {
+                    // 队列为空，停止查找
+                    break;
+                }
+            }
+
+            // 将其他连接放回队列
+            for c in temp_vec {
+                self.idle_connections[idx].push(c);
+            }
+
+            if found {
+                if let Some(stats) = &self.stats_collector {
+                    // 从 idle 移除一次
+                    self.update_stats_on_idle_pop(stats, conn);
                 }
             }
         }

@@ -11,6 +11,7 @@ categories = ["network-programming"]
 
 [dependencies]
 thiserror = "1.0"
+crossbeam = "0.8"
 
 [dev-dependencies]
 tokio-test = "0.4"
@@ -51,3 +52,11 @@ path = "test/performance_report.rs"
 [[test]]
 name = "stats_test"
 path = "test/stats_test.rs"
+
+[[test]]
+name = "real_world_stress_test"
+path = "test/real_world_stress_test.rs"
+
+[[test]]
+name = "extreme_stress_test"
+path = "test/extreme_stress_test.rs"
