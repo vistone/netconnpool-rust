@@ -620,11 +620,13 @@ impl PoolInner {
         required_protocol: Option<Protocol>,
         required_ip_version: Option<IPVersion>,
     ) -> Result<Arc<Connection>> {
-        // Double check max connections under write lock to ensure consistency
-        // But creating connection takes time, we shouldn't hold lock.
-        // We use double check: check count, connect, check count again before insert.
+        // Double check max connections to ensure consistency
+        // 第一次检查：快速检查（read lock，不阻塞其他读取）
+        // 创建连接（耗时操作，不持锁）
+        // 第二次检查：最终检查（write lock，确保原子性）
+        // 这样可以避免在创建连接期间持有锁，同时确保不会超出限制
 
-        // Check count first
+        // 第一次检查：快速预检查
         if self.config.max_connections > 0 {
             let current = self
                 .all_connections
@@ -722,7 +724,9 @@ impl PoolInner {
             }
         }
 
-        // Insert into map
+        // 第二次检查：最终检查并插入（write lock，确保原子性）
+        // 这是 double-check 的关键：即使第一次检查通过，在插入前再次检查
+        // 可以防止多个线程同时通过第一次检查后都创建连接导致超出限制
         {
             let mut connections = self.all_connections.write().map_err(|e| {
                 NetConnPoolError::IoError(std::io::Error::other(format!(
@@ -732,6 +736,8 @@ impl PoolInner {
             })?;
             let current = connections.len();
             if self.config.max_connections > 0 && current >= self.config.max_connections {
+                // 连接已创建但超出限制，需要关闭它
+                drop(connections); // 释放锁后再关闭连接
                 self.close_connection(&conn);
                 return Err(NetConnPoolError::MaxConnectionsReached {
                     current,
@@ -798,20 +804,36 @@ impl PoolInner {
 
         // Put back to idle list (无锁操作)
         if let Some(idx) = Self::get_bucket_index(conn.get_protocol(), conn.get_ip_version()) {
-            // 使用原子计数器检查 max_idle_connections（近似值，性能优先）
-            let current_count = self.idle_counts[idx].load(Ordering::Relaxed);
-            if current_count < self.config.max_idle_connections {
-                // 先增加计数器（乐观锁）
-                self.idle_counts[idx].fetch_add(1, Ordering::Relaxed);
-                // 推入队列（无锁操作）
-                self.idle_connections[idx].push(conn.clone());
-
-                if let Some(stats) = &self.stats_collector {
-                    self.update_stats_on_idle_push(stats, &conn);
+            // 使用 CAS 操作原子地检查和增加计数器，避免竞态条件
+            let max_idle = self.config.max_idle_connections;
+            loop {
+                let current = self.idle_counts[idx].load(Ordering::Relaxed);
+                if current >= max_idle {
+                    // 超过最大空闲连接数，直接移除
+                    let _ = self.remove_connection(&conn);
+                    break;
                 }
-            } else {
-                // 超过最大空闲连接数，直接移除
-                let _ = self.remove_connection(&conn);
+                // 尝试原子地增加计数器
+                match self.idle_counts[idx].compare_exchange_weak(
+                    current,
+                    current + 1,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                ) {
+                    Ok(_) => {
+                        // CAS 成功，推入队列
+                        self.idle_connections[idx].push(conn.clone());
+
+                        if let Some(stats) = &self.stats_collector {
+                            self.update_stats_on_idle_push(stats, &conn);
+                        }
+                        break;
+                    }
+                    Err(_) => {
+                        // CAS 失败，其他线程修改了计数器，重试
+                        continue;
+                    }
+                }
             }
         } else {
             // Unknown protocol/ip, cannot pool efficiently. Close it.
@@ -994,20 +1016,36 @@ impl PoolInner {
         conn.mark_idle();
 
         if let Some(idx) = Self::get_bucket_index(conn.get_protocol(), conn.get_ip_version()) {
-            // 使用原子计数器检查 max_idle_connections（近似值，性能优先）
-            let current_count = self.idle_counts[idx].load(Ordering::Relaxed);
-            if current_count < self.config.max_idle_connections {
-                // 先增加计数器（乐观锁）
-                self.idle_counts[idx].fetch_add(1, Ordering::Relaxed);
-                // 推入队列（无锁操作）
-                self.idle_connections[idx].push(conn.clone());
-
-                if let Some(stats) = &self.stats_collector {
-                    self.update_stats_on_idle_push(stats, &conn);
+            // 使用 CAS 操作原子地检查和增加计数器，避免竞态条件
+            let max_idle = self.config.max_idle_connections;
+            loop {
+                let current = self.idle_counts[idx].load(Ordering::Relaxed);
+                if current >= max_idle {
+                    // 超过最大空闲连接数，直接移除
+                    let _ = self.remove_connection(&conn);
+                    break;
                 }
-            } else {
-                // 超过最大空闲连接数，直接移除
-                let _ = self.remove_connection(&conn);
+                // 尝试原子地增加计数器
+                match self.idle_counts[idx].compare_exchange_weak(
+                    current,
+                    current + 1,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                ) {
+                    Ok(_) => {
+                        // CAS 成功，推入队列
+                        self.idle_connections[idx].push(conn.clone());
+
+                        if let Some(stats) = &self.stats_collector {
+                            self.update_stats_on_idle_push(stats, &conn);
+                        }
+                        break;
+                    }
+                    Err(_) => {
+                        // CAS 失败，其他线程修改了计数器，重试
+                        continue;
+                    }
+                }
             }
         } else {
             let _ = self.remove_connection(&conn);
@@ -1029,7 +1067,9 @@ impl PoolInner {
             // 2. 这里我们尝试从队列中移除（如果存在），但为了性能，我们限制最大检查次数
             // 3. 由于无锁队列的特性，这个操作是 best-effort 的
 
-            const MAX_CHECK: usize = 100; // 最多检查 100 个连接，避免性能问题
+            // 优化：减少检查次数，因为无锁队列不支持高效查找
+            // 主要依赖 return_connection 时的 is_connection_valid_for_borrow 检查来过滤无效连接
+            const MAX_CHECK: usize = 10; // 最多检查 10 个连接，避免高并发下的性能问题
             let mut checked = 0;
             let mut found = false;
             let mut temp_vec = Vec::new();
