@@ -94,7 +94,7 @@ checksum = "05f29059c0c2090612e8d742178b0580d2dc940c837851ad723096f87af6663e"
 
 [[package]]
 name = "netconnpool"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "crossbeam",
  "thiserror",
