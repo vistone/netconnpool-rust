@@ -88,3 +88,7 @@ path = "test/idle_counts_cas_test.rs"
 [[test]]
 name = "vulnerability_check"
 path = "test/vulnerability_check.rs"
+
+[[test]]
+name = "final_verification"
+path = "test/final_verification.rs"
