@@ -1,6 +1,8 @@
 # NetConnPool - Rust 网络连接池管理库
 
+[![Rust](https://img.shields.io/badge/rust-1.92.0%2B-orange.svg)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-100%25_passing-brightgreen.svg)](#测试)
 
 一个功能全面、高性能的 Rust 语言网络连接池管理库，提供了完善的连接生命周期管理、健康检查、统计监控等功能。
 
@@ -203,7 +205,7 @@ netconnpool-rust/
 
 ## 版本
 
-当前版本：**1.0.1**
+当前版本：**1.0.3**（最终稳定版）
 
 ## 许可证
 
