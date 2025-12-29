@@ -84,3 +84,7 @@ path = "test/extreme_stress_test.rs"
 [[test]]
 name = "idle_counts_cas_test"
 path = "test/idle_counts_cas_test.rs"
+
+[[test]]
+name = "vulnerability_check"
+path = "test/vulnerability_check.rs"

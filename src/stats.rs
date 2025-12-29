@@ -142,35 +142,57 @@ struct StatsInternal {
 
 impl StatsCollector {
     /// 安全地增加 i64 原子计数器，检测溢出
+    /// 
+    /// 使用 CAS 循环确保原子性更新，避免在高并发下丢失更新
     #[inline]
     fn safe_increment_i64(atomic: &AtomicI64, delta: i64, name: &str) {
-        let old = atomic.load(Ordering::Relaxed);
-        if let Some(new) = old.checked_add(delta) {
-            atomic.store(new, Ordering::Relaxed);
-        } else {
-            // 溢出检测：记录警告但不 panic
-            eprintln!("警告: 统计计数器 {} 溢出 (当前值: {}, 增量: {})", name, old, delta);
-            // 对于累计计数器，可以选择重置为 0 或保持最大值
-            // 这里选择保持最大值，避免统计突然变为负数
-            if delta > 0 {
-                atomic.store(i64::MAX, Ordering::Relaxed);
-            } else {
-                atomic.store(i64::MIN, Ordering::Relaxed);
+        loop {
+            let old = atomic.load(Ordering::Relaxed);
+            let new = match old.checked_add(delta) {
+                Some(v) => v,
+                None => {
+                    // 溢出检测：记录警告但不 panic
+                    eprintln!("警告: 统计计数器 {} 溢出 (当前值: {}, 增量: {})", name, old, delta);
+                    // 对于累计计数器，可以选择重置为 0 或保持最大值
+                    // 这里选择保持最大值，避免统计突然变为负数
+                    if delta > 0 {
+                        i64::MAX
+                    } else {
+                        i64::MIN
+                    }
+                }
+            };
+
+            // 使用 CAS 确保原子性更新
+            match atomic.compare_exchange_weak(old, new, Ordering::Relaxed, Ordering::Relaxed) {
+                Ok(_) => break,      // 成功，退出循环
+                Err(_) => continue,  // 失败，重试
             }
         }
     }
 
     /// 安全地增加 u64 原子计数器，检测溢出
+    /// 
+    /// 使用 CAS 循环确保原子性更新，避免在高并发下丢失更新
     #[inline]
     fn safe_increment_u64(atomic: &AtomicU64, delta: u64, name: &str) {
-        let old = atomic.load(Ordering::Relaxed);
-        if let Some(new) = old.checked_add(delta) {
-            atomic.store(new, Ordering::Relaxed);
-        } else {
-            // 溢出检测：记录警告但不 panic
-            eprintln!("警告: 统计计数器 {} 溢出 (当前值: {}, 增量: {})", name, old, delta);
-            // 保持最大值
-            atomic.store(u64::MAX, Ordering::Relaxed);
+        loop {
+            let old = atomic.load(Ordering::Relaxed);
+            let new = match old.checked_add(delta) {
+                Some(v) => v,
+                None => {
+                    // 溢出检测：记录警告但不 panic
+                    eprintln!("警告: 统计计数器 {} 溢出 (当前值: {}, 增量: {})", name, old, delta);
+                    // 保持最大值
+                    u64::MAX
+                }
+            };
+
+            // 使用 CAS 确保原子性更新
+            match atomic.compare_exchange_weak(old, new, Ordering::Relaxed, Ordering::Relaxed) {
+                Ok(_) => break,      // 成功，退出循环
+                Err(_) => continue,  // 失败，重试
+            }
         }
     }
 

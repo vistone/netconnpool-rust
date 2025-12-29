@@ -1,0 +1,25 @@
+# cargo-deny 配置文件
+# 用于检查依赖项的许可证、安全漏洞和禁止的依赖项
+
+[licenses]
+# 允许的许可证列表
+allow = [
+    "BSD-3-Clause",
+    "MIT",
+    "Apache-2.0",
+    "Unicode-3.0",
+]
+
+[bans]
+# 禁止的依赖项配置
+# deny = []
+
+[advisories]
+# 安全建议检查
+db-path = ""
+db-urls = ["https://github.com/rustsec/advisory-db"]
+
+[sources]
+# 允许的源代码
+unknown-registry = "warn"
+unknown-git = "warn"
