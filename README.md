@@ -23,14 +23,14 @@
 
 ```toml
 [dependencies]
-netconnpool = "1.0.1"
+netconnpool = "1.0.3"
 ```
 
 或者从GitHub直接使用：
 
 ```toml
 [dependencies]
-netconnpool = { git = "https://github.com/vistone/netconnpool-rust", tag = "v1.0.1" }
+netconnpool = { git = "https://github.com/vistone/netconnpool-rust", tag = "v1.0.3" }
 ```
 
 ## 快速开始
