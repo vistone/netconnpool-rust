@@ -5,6 +5,24 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.4] - 2025-12-29
+
+### 修复
+
+- **修复子模块配置问题**：移除了 `cargo deny` 工具生成的 `advisory-db-3157b0e258782691` 子模块和 `db.lock` 文件
+  - 这些文件是 `cargo deny` 在本地运行时自动生成的，不应提交到仓库
+  - 修复了 v1.0.3 tag 中存在的 "no URL configured for submodule" 错误
+  - 更新 `.gitignore` 以忽略 `cargo deny` 生成的文件
+  - 现在用户可以正常使用 Cargo 更新依赖，不会遇到子模块配置错误
+
+### 影响
+
+- ✅ 修复了依赖更新问题：用户现在可以正常使用 `cargo update` 和从 GitHub tag 安装依赖
+- ✅ 清理了仓库：移除了不应提交的临时文件
+- ✅ 向后兼容：完全兼容 1.0.3 版本，无 API 变更
+
+---
+
 ## [1.0.3] - 2025-12-29
 
 ### 稳定版本发布

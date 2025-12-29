@@ -25,14 +25,14 @@
 
 ```toml
 [dependencies]
-netconnpool = "1.0.3"
+netconnpool = "1.0.4"
 ```
 
 或者从GitHub直接使用：
 
 ```toml
 [dependencies]
-netconnpool = { git = "https://github.com/vistone/netconnpool-rust", tag = "v1.0.3" }
+netconnpool = { git = "https://github.com/vistone/netconnpool-rust", tag = "v1.0.4" }
 ```
 
 ## 快速开始
@@ -205,7 +205,7 @@ netconnpool-rust/
 
 ## 版本
 
-当前版本：**1.0.3**（最终稳定版）
+当前版本：**1.0.4**（修复子模块问题）
 
 ## 许可证
 
