@@ -51,3 +51,23 @@ path = "test/performance_report.rs"
 [[test]]
 name = "stats_test"
 path = "test/stats_test.rs"
+
+[[test]]
+name = "comprehensive_stress_test"
+path = "test/comprehensive_stress_test.rs"
+
+[[test]]
+name = "comprehensive_client_test"
+path = "test/comprehensive_client_test.rs"
+
+[[test]]
+name = "fuzzing_client_test"
+path = "test/fuzzing_client_test.rs"
+
+[[test]]
+name = "quick_fuzzing_test"
+path = "test/quick_fuzzing_test.rs"
+
+[[test]]
+name = "stats_utilization_test"
+path = "test/stats_utilization_test.rs"

@@ -141,6 +141,39 @@ struct StatsInternal {
 }
 
 impl StatsCollector {
+    /// 安全地增加 i64 原子计数器，检测溢出
+    #[inline]
+    fn safe_increment_i64(atomic: &AtomicI64, delta: i64, name: &str) {
+        let old = atomic.load(Ordering::Relaxed);
+        if let Some(new) = old.checked_add(delta) {
+            atomic.store(new, Ordering::Relaxed);
+        } else {
+            // 溢出检测：记录警告但不 panic
+            eprintln!("警告: 统计计数器 {} 溢出 (当前值: {}, 增量: {})", name, old, delta);
+            // 对于累计计数器，可以选择重置为 0 或保持最大值
+            // 这里选择保持最大值，避免统计突然变为负数
+            if delta > 0 {
+                atomic.store(i64::MAX, Ordering::Relaxed);
+            } else {
+                atomic.store(i64::MIN, Ordering::Relaxed);
+            }
+        }
+    }
+
+    /// 安全地增加 u64 原子计数器，检测溢出
+    #[inline]
+    fn safe_increment_u64(atomic: &AtomicU64, delta: u64, name: &str) {
+        let old = atomic.load(Ordering::Relaxed);
+        if let Some(new) = old.checked_add(delta) {
+            atomic.store(new, Ordering::Relaxed);
+        } else {
+            // 溢出检测：记录警告但不 panic
+            eprintln!("警告: 统计计数器 {} 溢出 (当前值: {}, 增量: {})", name, old, delta);
+            // 保持最大值
+            atomic.store(u64::MAX, Ordering::Relaxed);
+        }
+    }
+
     /// NewStatsCollector 创建统计收集器
     pub fn new() -> Self {
         Self {
@@ -177,112 +210,136 @@ impl StatsCollector {
 
     /// IncrementTotalConnectionsCreated 增加创建连接计数
     pub fn increment_total_connections_created(&self) {
-        self.stats
-            .total_connections_created
-            .fetch_add(1, Ordering::Relaxed);
-        self.stats
-            .current_connections
-            .fetch_add(1, Ordering::Relaxed);
+        Self::safe_increment_i64(
+            &self.stats.total_connections_created,
+            1,
+            "total_connections_created",
+        );
+        Self::safe_increment_i64(
+            &self.stats.current_connections,
+            1,
+            "current_connections",
+        );
         self.update_time();
     }
 
     /// IncrementTotalConnectionsClosed 增加关闭连接计数
     pub fn increment_total_connections_closed(&self) {
-        self.stats
-            .total_connections_closed
-            .fetch_add(1, Ordering::Relaxed);
-        self.stats
-            .current_connections
-            .fetch_sub(1, Ordering::Relaxed);
+        Self::safe_increment_i64(
+            &self.stats.total_connections_closed,
+            1,
+            "total_connections_closed",
+        );
+        Self::safe_increment_i64(
+            &self.stats.current_connections,
+            -1,
+            "current_connections",
+        );
         self.update_time();
     }
 
     /// IncrementCurrentIdleConnections 增加空闲连接计数
     pub fn increment_current_idle_connections(&self, delta: i64) {
-        self.stats
-            .current_idle_connections
-            .fetch_add(delta, Ordering::Relaxed);
+        Self::safe_increment_i64(
+            &self.stats.current_idle_connections,
+            delta,
+            "current_idle_connections",
+        );
         self.update_time();
     }
 
     /// IncrementCurrentActiveConnections 增加活跃连接计数
     pub fn increment_current_active_connections(&self, delta: i64) {
-        self.stats
-            .current_active_connections
-            .fetch_add(delta, Ordering::Relaxed);
+        Self::safe_increment_i64(
+            &self.stats.current_active_connections,
+            delta,
+            "current_active_connections",
+        );
         self.update_time();
     }
 
     /// IncrementTotalGetRequests 增加获取请求计数
     pub fn increment_total_get_requests(&self) {
-        self.stats
-            .total_get_requests
-            .fetch_add(1, Ordering::Relaxed);
+        Self::safe_increment_i64(
+            &self.stats.total_get_requests,
+            1,
+            "total_get_requests",
+        );
         self.update_time();
     }
 
     /// IncrementSuccessfulGets 增加成功获取计数
     pub fn increment_successful_gets(&self) {
-        self.stats.successful_gets.fetch_add(1, Ordering::Relaxed);
+        Self::safe_increment_i64(&self.stats.successful_gets, 1, "successful_gets");
         self.update_time();
     }
 
     /// IncrementFailedGets 增加失败获取计数
     pub fn increment_failed_gets(&self) {
-        self.stats.failed_gets.fetch_add(1, Ordering::Relaxed);
+        Self::safe_increment_i64(&self.stats.failed_gets, 1, "failed_gets");
         self.update_time();
     }
 
     /// IncrementTimeoutGets 增加超时获取计数
     pub fn increment_timeout_gets(&self) {
-        self.stats.timeout_gets.fetch_add(1, Ordering::Relaxed);
+        Self::safe_increment_i64(&self.stats.timeout_gets, 1, "timeout_gets");
         self.update_time();
     }
 
     /// IncrementHealthCheckAttempts 增加健康检查尝试计数
     pub fn increment_health_check_attempts(&self) {
-        self.stats
-            .health_check_attempts
-            .fetch_add(1, Ordering::Relaxed);
+        Self::safe_increment_i64(
+            &self.stats.health_check_attempts,
+            1,
+            "health_check_attempts",
+        );
         self.update_time();
     }
 
     /// IncrementHealthCheckFailures 增加健康检查失败计数
     pub fn increment_health_check_failures(&self) {
-        self.stats
-            .health_check_failures
-            .fetch_add(1, Ordering::Relaxed);
+        Self::safe_increment_i64(
+            &self.stats.health_check_failures,
+            1,
+            "health_check_failures",
+        );
         self.update_time();
     }
 
     /// IncrementUnhealthyConnections 增加不健康连接计数
     pub fn increment_unhealthy_connections(&self) {
-        self.stats
-            .unhealthy_connections
-            .fetch_add(1, Ordering::Relaxed);
+        Self::safe_increment_i64(
+            &self.stats.unhealthy_connections,
+            1,
+            "unhealthy_connections",
+        );
         self.update_time();
     }
 
     /// IncrementConnectionErrors 增加连接错误计数
     pub fn increment_connection_errors(&self) {
-        self.stats.connection_errors.fetch_add(1, Ordering::Relaxed);
+        Self::safe_increment_i64(
+            &self.stats.connection_errors,
+            1,
+            "connection_errors",
+        );
         self.update_time();
     }
 
     /// IncrementLeakedConnections 增加泄漏连接计数
     pub fn increment_leaked_connections(&self) {
-        self.stats
-            .leaked_connections
-            .fetch_add(1, Ordering::Relaxed);
+        Self::safe_increment_i64(
+            &self.stats.leaked_connections,
+            1,
+            "leaked_connections",
+        );
         self.update_time();
     }
 
     /// RecordGetTime 记录获取连接的时间
     pub fn record_get_time(&self, duration: Duration) {
         let nanos = duration.as_nanos() as u64;
-        self.stats
-            .total_get_time
-            .fetch_add(nanos, Ordering::Relaxed);
+        Self::safe_increment_u64(&self.stats.total_get_time, nanos, "total_get_time");
 
         // 计算平均时间（使用重试机制避免竞争条件，最多重试3次）
         let max_retries = 3;
@@ -385,73 +442,91 @@ impl StatsCollector {
 
     /// IncrementCurrentIPv4Connections 增加IPv4连接计数
     pub fn increment_current_ipv4_connections(&self, delta: i64) {
-        self.stats
-            .current_ipv4_connections
-            .fetch_add(delta, Ordering::Relaxed);
+        Self::safe_increment_i64(
+            &self.stats.current_ipv4_connections,
+            delta,
+            "current_ipv4_connections",
+        );
         self.update_time();
     }
 
     /// IncrementCurrentIPv6Connections 增加IPv6连接计数
     pub fn increment_current_ipv6_connections(&self, delta: i64) {
-        self.stats
-            .current_ipv6_connections
-            .fetch_add(delta, Ordering::Relaxed);
+        Self::safe_increment_i64(
+            &self.stats.current_ipv6_connections,
+            delta,
+            "current_ipv6_connections",
+        );
         self.update_time();
     }
 
     /// IncrementCurrentIPv4IdleConnections 增加IPv4空闲连接计数
     pub fn increment_current_ipv4_idle_connections(&self, delta: i64) {
-        self.stats
-            .current_ipv4_idle_connections
-            .fetch_add(delta, Ordering::Relaxed);
+        Self::safe_increment_i64(
+            &self.stats.current_ipv4_idle_connections,
+            delta,
+            "current_ipv4_idle_connections",
+        );
         self.update_time();
     }
 
     /// IncrementCurrentIPv6IdleConnections 增加IPv6空闲连接计数
     pub fn increment_current_ipv6_idle_connections(&self, delta: i64) {
-        self.stats
-            .current_ipv6_idle_connections
-            .fetch_add(delta, Ordering::Relaxed);
+        Self::safe_increment_i64(
+            &self.stats.current_ipv6_idle_connections,
+            delta,
+            "current_ipv6_idle_connections",
+        );
         self.update_time();
     }
 
     /// IncrementCurrentTCPConnections 增加TCP连接计数
     pub fn increment_current_tcp_connections(&self, delta: i64) {
-        self.stats
-            .current_tcp_connections
-            .fetch_add(delta, Ordering::Relaxed);
+        Self::safe_increment_i64(
+            &self.stats.current_tcp_connections,
+            delta,
+            "current_tcp_connections",
+        );
         self.update_time();
     }
 
     /// IncrementCurrentUDPConnections 增加UDP连接计数
     pub fn increment_current_udp_connections(&self, delta: i64) {
-        self.stats
-            .current_udp_connections
-            .fetch_add(delta, Ordering::Relaxed);
+        Self::safe_increment_i64(
+            &self.stats.current_udp_connections,
+            delta,
+            "current_udp_connections",
+        );
         self.update_time();
     }
 
     /// IncrementCurrentTCPIdleConnections 增加TCP空闲连接计数
     pub fn increment_current_tcp_idle_connections(&self, delta: i64) {
-        self.stats
-            .current_tcp_idle_connections
-            .fetch_add(delta, Ordering::Relaxed);
+        Self::safe_increment_i64(
+            &self.stats.current_tcp_idle_connections,
+            delta,
+            "current_tcp_idle_connections",
+        );
         self.update_time();
     }
 
     /// IncrementCurrentUDPIdleConnections 增加UDP空闲连接计数
     pub fn increment_current_udp_idle_connections(&self, delta: i64) {
-        self.stats
-            .current_udp_idle_connections
-            .fetch_add(delta, Ordering::Relaxed);
+        Self::safe_increment_i64(
+            &self.stats.current_udp_idle_connections,
+            delta,
+            "current_udp_idle_connections",
+        );
         self.update_time();
     }
 
     /// IncrementTotalConnectionsReused 增加连接复用计数
     pub fn increment_total_connections_reused(&self) {
-        self.stats
-            .total_connections_reused
-            .fetch_add(1, Ordering::Relaxed);
+        Self::safe_increment_i64(
+            &self.stats.total_connections_reused,
+            1,
+            "total_connections_reused",
+        );
         self.update_time();
     }
 

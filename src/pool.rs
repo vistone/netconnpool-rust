@@ -178,7 +178,25 @@ impl Pool {
             };
             drop(pool); // 释放Arc，允许Pool被销毁
 
-            thread::sleep(interval);
+            // 使用可中断的 sleep：将长时间 sleep 分解为多个短 sleep
+            // 这样可以在 sleep 期间检查 Pool 是否已关闭
+            let check_interval = Duration::from_millis(100); // 每100ms检查一次
+            let mut remaining = interval;
+            while remaining > Duration::ZERO {
+                let sleep_duration = remaining.min(check_interval);
+                thread::sleep(sleep_duration);
+                remaining = remaining.saturating_sub(sleep_duration);
+
+                // 检查 Pool 是否已销毁或关闭
+                if inner.upgrade().is_none() {
+                    return; // Pool已销毁，立即退出
+                }
+                if let Some(p) = inner.upgrade() {
+                    if p.closed.load(Ordering::Relaxed) {
+                        return; // Pool已关闭，立即退出
+                    }
+                }
+            }
 
             // 再次获取Pool
             let pool = match inner.upgrade() {
@@ -206,16 +224,16 @@ impl Pool {
     /// use std::net::TcpStream;
     ///
     /// let mut config = default_config();
-    /// config.dialer = Some(Box::new(|_| {
-    ///     TcpStream::connect("127.0.0.1:8080")
-    ///         .map(|s| ConnectionType::Tcp(s))
-    ///         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
-    /// }));
-    ///
-    /// let pool = Pool::new(config).unwrap();
-    /// let conn = pool.get().unwrap();
-    /// // 使用连接...
-    /// drop(conn); // 自动归还
+/// config.dialer = Some(Box::new(|_| {
+///     TcpStream::connect("127.0.0.1:8080")
+///         .map(|s| ConnectionType::Tcp(s))
+///         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+/// }));
+///
+/// let pool = Pool::new(config).unwrap();
+/// let conn = pool.get().unwrap();
+/// // 使用连接...
+/// drop(conn); // 自动归还
     /// ```
     pub fn get(&self) -> Result<PooledConnection> {
         self.get_with_timeout(self.inner.config.get_connection_timeout)
@@ -328,20 +346,20 @@ impl Pool {
     ///
     /// # 示例
     /// ```rust,no_run
-    /// use netconnpool::*;
-    /// use std::net::TcpStream;
-    ///
-    /// let mut config = default_config();
-    /// config.dialer = Some(Box::new(|_| {
-    ///     TcpStream::connect("127.0.0.1:8080")
-    ///         .map(|s| ConnectionType::Tcp(s))
-    ///         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
-    /// }));
-    ///
-    /// let pool = Pool::new(config).unwrap();
-    /// let stats = pool.stats();
-    /// println!("当前连接数: {}", stats.current_connections);
-    /// println!("连接复用率: {:.2}%", stats.average_reuse_count * 100.0);
+/// use netconnpool::*;
+/// use std::net::TcpStream;
+///
+/// let mut config = default_config();
+/// config.dialer = Some(Box::new(|_| {
+///     TcpStream::connect("127.0.0.1:8080")
+///         .map(|s| ConnectionType::Tcp(s))
+///         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+/// }));
+///
+/// let pool = Pool::new(config).unwrap();
+/// let stats = pool.stats();
+/// println!("当前连接数: {}", stats.current_connections);
+/// println!("连接复用率: {:.2}%", stats.average_reuse_count * 100.0);
     /// ```
     pub fn stats(&self) -> crate::stats::Stats {
         if let Some(stats) = &self.inner.stats_collector {

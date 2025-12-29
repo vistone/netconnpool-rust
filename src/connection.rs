@@ -103,8 +103,38 @@ impl Connection {
         .map(|addr| detect_ip_version(&addr))
         .unwrap_or(IPVersion::Unknown);
 
+        // 安全地生成连接 ID，检测溢出
+        let id = loop {
+            let old = CONNECTION_ID_GENERATOR.load(Ordering::Relaxed);
+            if let Some(new) = old.checked_add(1) {
+                if CONNECTION_ID_GENERATOR.compare_exchange_weak(
+                    old,
+                    new,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                ).is_ok() {
+                    break new;
+                }
+                // CAS 失败，重试
+                continue;
+            } else {
+                // 溢出：重置为 1（跳过 0，因为 0 可能用作特殊值）
+                eprintln!("警告: 连接 ID 生成器溢出，重置为 1");
+                if CONNECTION_ID_GENERATOR.compare_exchange_weak(
+                    old,
+                    1,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                ).is_ok() {
+                    break 1;
+                }
+                // CAS 失败，重试
+                continue;
+            }
+        };
+
         Self {
-            id: CONNECTION_ID_GENERATOR.fetch_add(1, Ordering::Relaxed),
+            id,
             conn,
             protocol,
             ip_version,
@@ -182,19 +212,28 @@ impl Connection {
     /// MarkInUse 标记为使用中
     pub fn mark_in_use(&self) {
         self.in_use.store(true, Ordering::Release);
-        *self.last_used_at.lock().unwrap() = Instant::now();
+        if let Ok(mut guard) = self.last_used_at.lock() {
+            *guard = Instant::now();
+        }
+        // 如果锁获取失败（poisoned），忽略错误，因为时间戳更新不是关键操作
     }
 
     /// MarkIdle 标记为空闲
     pub fn mark_idle(&self) {
         self.in_use.store(false, Ordering::Release);
-        *self.last_used_at.lock().unwrap() = Instant::now();
+        if let Ok(mut guard) = self.last_used_at.lock() {
+            *guard = Instant::now();
+        }
+        // 如果锁获取失败（poisoned），忽略错误，因为时间戳更新不是关键操作
     }
 
     /// UpdateHealth 更新健康状态
     pub fn update_health(&self, healthy: bool) {
         self.is_healthy.store(healthy, Ordering::Release);
-        *self.last_health_check_at.lock().unwrap() = Instant::now();
+        if let Ok(mut guard) = self.last_health_check_at.lock() {
+            *guard = Instant::now();
+        }
+        // 如果锁获取失败（poisoned），忽略错误，因为时间戳更新不是关键操作
     }
 
     /// mark_unhealthy 仅标记为不健康（不主动关闭）
