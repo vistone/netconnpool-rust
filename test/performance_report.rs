@@ -108,7 +108,7 @@ fn generate_performance_report() {
         let addr = addr.clone();
         move |_| {
             TcpStream::connect(&addr)
-                .map(|s| ConnectionType::Tcp(s))
+                .map(ConnectionType::Tcp)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }
     }));
@@ -331,10 +331,15 @@ fn generate_performance_report() {
     println!("  成功获取数: {}", final_stats.successful_gets);
     println!("  失败获取数: {}", final_stats.failed_gets);
     println!("  连接复用数: {}", final_stats.total_connections_reused);
-    println!(
-        "  连接复用率: {:.2}%",
-        final_stats.average_reuse_count * 100.0
-    );
+    // average_reuse_count 是平均每个连接的复用次数，不是复用率
+    // 复用率 = total_connections_reused / successful_gets * 100%
+    let reuse_rate = if final_stats.successful_gets > 0 {
+        final_stats.total_connections_reused as f64 / final_stats.successful_gets as f64 * 100.0
+    } else {
+        0.0
+    };
+    println!("  连接复用率: {:.2}%", reuse_rate);
+    println!("  平均复用次数: {:.2}", final_stats.average_reuse_count);
     println!("  平均获取时间: {:?}", final_stats.average_get_time);
     println!();
 
@@ -400,17 +405,17 @@ fn generate_performance_report() {
     }
 
     total += 1;
-    if final_stats.average_reuse_count > 5.0 {
-        println!(
-            "✅ 连接复用率: 优秀 ({:.2}%)",
-            final_stats.average_reuse_count * 100.0
-        );
+    // 复用率 = total_connections_reused / successful_gets * 100%
+    let reuse_rate = if final_stats.successful_gets > 0 {
+        final_stats.total_connections_reused as f64 / final_stats.successful_gets as f64 * 100.0
+    } else {
+        0.0
+    };
+    if reuse_rate > 95.0 {
+        println!("✅ 连接复用率: 优秀 ({:.2}%)", reuse_rate);
         passed += 1;
     } else {
-        println!(
-            "❌ 连接复用率: 需要优化 ({:.2}%)",
-            final_stats.average_reuse_count * 100.0
-        );
+        println!("❌ 连接复用率: 需要优化 ({:.2}%)", reuse_rate);
     }
 
     println!();

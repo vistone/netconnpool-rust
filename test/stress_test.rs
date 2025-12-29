@@ -46,7 +46,7 @@ fn test_concurrent_connections() {
         let addr = addr.clone();
         move |_| {
             TcpStream::connect(&addr)
-                .map(|s| ConnectionType::Tcp(s))
+                .map(ConnectionType::Tcp)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }
     }));
@@ -66,16 +66,11 @@ fn test_concurrent_connections() {
             thread::spawn(move || {
                 let mut success_count = 0;
                 for _ in 0..operations_per_thread {
-                    match pool.get() {
-                        Ok(conn) => {
-                            // 模拟使用连接
-                            thread::sleep(Duration::from_millis(1));
-                            drop(conn);
-                            if true {
-                                success_count += 1;
-                            }
-                        }
-                        Err(_) => {}
+                    if let Ok(conn) = pool.get() {
+                        // 模拟使用连接
+                        thread::sleep(Duration::from_millis(1));
+                        drop(conn);
+                        success_count += 1;
                     }
                 }
                 success_count
@@ -123,7 +118,7 @@ fn test_long_running() {
         let addr = addr.clone();
         move |_| {
             TcpStream::connect(&addr)
-                .map(|s| ConnectionType::Tcp(s))
+                .map(ConnectionType::Tcp)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }
     }));
@@ -191,10 +186,15 @@ fn test_long_running() {
     println!("    创建连接数: {}", final_stats.total_connections_created);
     println!("    关闭连接数: {}", final_stats.total_connections_closed);
     println!("    当前连接数: {}", final_stats.current_connections);
-    println!(
-        "    连接复用率: {:.2}%",
-        final_stats.average_reuse_count * 100.0
-    );
+    // average_reuse_count 是平均每个连接的复用次数，不是复用率
+    // 复用率 = total_connections_reused / successful_gets * 100%
+    let reuse_rate = if final_stats.successful_gets > 0 {
+        final_stats.total_connections_reused as f64 / final_stats.successful_gets as f64 * 100.0
+    } else {
+        0.0
+    };
+    println!("    连接复用率: {:.2}%", reuse_rate);
+    println!("    平均复用次数: {:.2}", final_stats.average_reuse_count);
 
     assert!(total_ops > 0, "应该有成功的操作");
     assert!(final_stats.current_connections <= max_conns as i64);
@@ -213,7 +213,7 @@ fn test_memory_leak() {
         let addr = addr.clone();
         move |_| {
             TcpStream::connect(&addr)
-                .map(|s| ConnectionType::Tcp(s))
+                .map(ConnectionType::Tcp)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }
     }));
@@ -226,12 +226,9 @@ fn test_memory_leak() {
     let iterations = 10000;
 
     for i in 0..iterations {
-        match pool.get() {
-            Ok(conn) => {
-                // 立即归还
-                drop(conn);
-            }
-            Err(_) => {}
+        if let Ok(conn) = pool.get() {
+            // 立即归还
+            drop(conn);
         }
 
         // 每1000次迭代检查一次
@@ -268,7 +265,7 @@ fn test_connection_pool_exhaustion() {
         let addr = addr.clone();
         move |_| {
             TcpStream::connect(&addr)
-                .map(|s| ConnectionType::Tcp(s))
+                .map(ConnectionType::Tcp)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }
     }));
@@ -276,6 +273,7 @@ fn test_connection_pool_exhaustion() {
     config.max_connections = max_conns;
     config.min_connections = 0;
     config.enable_stats = true;
+    config.get_connection_timeout = Duration::from_millis(100); // 设置短超时，确保快速失败
 
     let pool = Arc::new(Pool::new(config).unwrap());
 
@@ -332,7 +330,7 @@ fn test_rapid_acquire_release() {
         let addr = addr.clone();
         move |_| {
             TcpStream::connect(&addr)
-                .map(|s| ConnectionType::Tcp(s))
+                .map(ConnectionType::Tcp)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }
     }));
@@ -363,10 +361,18 @@ fn test_rapid_acquire_release() {
         iterations as f64 / duration.as_secs_f64()
     );
     println!("  创建连接数: {}", stats.total_connections_created);
-    println!("  连接复用率: {:.2}%", stats.average_reuse_count * 100.0);
+    // average_reuse_count 是平均每个连接的复用次数，不是复用率
+    // 复用率 = total_connections_reused / successful_gets * 100%
+    let reuse_rate = if stats.successful_gets > 0 {
+        stats.total_connections_reused as f64 / stats.successful_gets as f64 * 100.0
+    } else {
+        0.0
+    };
+    println!("  连接复用率: {:.2}%", reuse_rate);
+    println!("  平均复用次数: {:.2}", stats.average_reuse_count);
 
-    // 连接复用率应该很高
-    assert!(stats.average_reuse_count > 10.0, "连接复用率应该很高");
+    // 连接复用率应该很高（> 95%）
+    assert!(reuse_rate > 95.0, "连接复用率应该超过95%，实际: {:.2}%", reuse_rate);
 
     stop.store(true, Ordering::Relaxed);
     let _ = server_handle.join();
@@ -384,7 +390,7 @@ fn test_mixed_protocols() {
         let addr = addr.clone();
         move |_| {
             TcpStream::connect(&addr)
-                .map(|s| ConnectionType::Tcp(s))
+                .map(ConnectionType::Tcp)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }
     }));
@@ -404,13 +410,10 @@ fn test_mixed_protocols() {
                 let mut tcp_count = 0;
                 for _ in 0..operations_per_thread {
                     // 随机选择协议（当前只支持TCP）
-                    match pool.get_tcp() {
-                        Ok(conn) => {
-                            tcp_count += 1;
-                            thread::sleep(Duration::from_millis(1));
-                            drop(conn);
-                        }
-                        Err(_) => {}
+                    if let Ok(conn) = pool.get_tcp() {
+                        tcp_count += 1;
+                        thread::sleep(Duration::from_millis(1));
+                        drop(conn);
                     }
                 }
                 tcp_count
@@ -443,7 +446,7 @@ fn test_connection_lifecycle() {
         let addr = addr.clone();
         move |_| {
             TcpStream::connect(&addr)
-                .map(|s| ConnectionType::Tcp(s))
+                .map(ConnectionType::Tcp)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }
     }));
@@ -502,7 +505,7 @@ fn test_high_concurrency_stress() {
         let addr = addr.clone();
         move |_| {
             TcpStream::connect(&addr)
-                .map(|s| ConnectionType::Tcp(s))
+                .map(ConnectionType::Tcp)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         }
     }));
@@ -522,16 +525,11 @@ fn test_high_concurrency_stress() {
             thread::spawn(move || {
                 let mut success = 0;
                 for _ in 0..operations_per_thread {
-                    match pool.get() {
-                        Ok(conn) => {
-                            // 模拟不同的使用时间
-                            thread::sleep(Duration::from_micros(100));
-                            drop(conn);
-                            if true {
-                                success += 1;
-                            }
-                        }
-                        Err(_) => {}
+                    if let Ok(conn) = pool.get() {
+                        // 模拟不同的使用时间
+                        thread::sleep(Duration::from_micros(100));
+                        drop(conn);
+                        success += 1;
                     }
                 }
                 success

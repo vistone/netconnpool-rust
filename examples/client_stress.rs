@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(ConnectionType::Udp(socket))
             }
             _ => TcpStream::connect(addr)
-                .map(|s| ConnectionType::Tcp(s))
+                .map(ConnectionType::Tcp)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>),
         }
     }));
@@ -136,7 +136,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Ok(conn) => {
                             if let Some(socket) = conn.udp_conn() {
                                 // UDP send
-                                if let Err(_) = socket.send(&data) {
+                                if socket.send(&data).is_err() {
                                     stats.failed_udp_requests.fetch_add(1, Ordering::Relaxed);
                                     continue;
                                 }
@@ -171,7 +171,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Ok(conn) => {
                             if let Some(mut stream) = conn.tcp_conn() {
                                 // Send data
-                                if let Err(_) = stream.write_all(&data) {
+                                if stream.write_all(&data).is_err() {
                                     stats.failed_tcp_requests.fetch_add(1, Ordering::Relaxed);
                                     continue;
                                 }
@@ -181,7 +181,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                                 // Read echo
                                 let mut buffer = vec![0; data_size];
-                                if let Err(_) = stream.read_exact(&mut buffer) {
+                                if stream.read_exact(&mut buffer).is_err() {
                                     stats.failed_tcp_requests.fetch_add(1, Ordering::Relaxed);
                                     continue;
                                 }

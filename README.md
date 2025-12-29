@@ -163,7 +163,7 @@ cargo test --lib test_pool_creation
 
 ## 项目结构
 
-```
+```text
 netconnpool-rust/
 ├── src/                    # 源代码
 │   ├── lib.rs             # 库入口，导出所有公共 API

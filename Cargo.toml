@@ -11,6 +11,7 @@ categories = ["network-programming"]
 
 [dependencies]
 thiserror = "1.0"
+crossbeam = "0.8"
 
 [dev-dependencies]
 tokio-test = "0.4"
@@ -53,6 +54,7 @@ name = "stats_test"
 path = "test/stats_test.rs"
 
 [[test]]
+<<<<<<< HEAD
 name = "comprehensive_stress_test"
 path = "test/comprehensive_stress_test.rs"
 
@@ -71,3 +73,15 @@ path = "test/quick_fuzzing_test.rs"
 [[test]]
 name = "stats_utilization_test"
 path = "test/stats_utilization_test.rs"
+=======
+name = "real_world_stress_test"
+path = "test/real_world_stress_test.rs"
+
+[[test]]
+name = "extreme_stress_test"
+path = "test/extreme_stress_test.rs"
+
+[[test]]
+name = "idle_counts_cas_test"
+path = "test/idle_counts_cas_test.rs"
+>>>>>>> c5b0dbd2396b54da9c79d68afcfb681a6b5b6982

@@ -27,7 +27,7 @@ fn test_full_lifecycle() {
     let mut config = default_config();
     config.dialer = Some(Box::new(move |_| {
         TcpStream::connect(&addr)
-            .map(|s| ConnectionType::Tcp(s))
+            .map(ConnectionType::Tcp)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }));
     let max_conns = 50;
@@ -73,7 +73,15 @@ fn test_full_lifecycle() {
 
     let stats2 = pool.stats();
     println!("  总操作数: {}", stats2.successful_gets);
-    println!("  连接复用率: {:.2}%", stats2.average_reuse_count * 100.0);
+    // average_reuse_count 是平均每个连接的复用次数，不是复用率
+    // 复用率 = total_connections_reused / successful_gets * 100%
+    let reuse_rate = if stats2.successful_gets > 0 {
+        stats2.total_connections_reused as f64 / stats2.successful_gets as f64 * 100.0
+    } else {
+        0.0
+    };
+    println!("  连接复用率: {:.2}%", reuse_rate);
+    println!("  平均复用次数: {:.2}", stats2.average_reuse_count);
 
     // 阶段3: 高负载阶段
     println!("阶段3: 高负载阶段");
@@ -116,8 +124,17 @@ fn test_full_lifecycle() {
     println!("  总失败获取: {}", final_stats.failed_gets);
 
     // 验证统计数据的合理性
-    assert!(final_stats.total_connections_created <= max_conns as i64);
-    assert!(final_stats.successful_gets > 0);
+    // 注意：total_connections_created 是累计值，在长时间运行中会超过 max_connections
+    // 因为连接会被创建、关闭、再创建。我们应该检查当前连接数。
+    assert!(
+        final_stats.current_connections <= max_conns as i64,
+        "当前连接数应该不超过最大连接数限制"
+    );
+    assert!(final_stats.successful_gets > 0, "应该有成功的操作");
+    assert!(
+        final_stats.total_connections_created > 0,
+        "应该创建过连接"
+    );
 }
 
 #[test]
@@ -143,7 +160,7 @@ fn test_error_recovery() {
             }
         }
         TcpStream::connect(&addr_clone)
-            .map(|s| ConnectionType::Tcp(s))
+            .map(ConnectionType::Tcp)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }));
     let max_conns = 20;
@@ -189,7 +206,7 @@ fn test_concurrent_pool_operations() {
     let mut config = default_config();
     config.dialer = Some(Box::new(move |_| {
         TcpStream::connect(&addr)
-            .map(|s| ConnectionType::Tcp(s))
+            .map(ConnectionType::Tcp)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }));
     let max_conns = 100;
