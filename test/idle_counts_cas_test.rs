@@ -139,10 +139,7 @@ fn test_idle_counts_cas_race_condition() {
     );
 
     // 验证：操作应该成功执行
-    assert!(
-        total_ops_count > 0,
-        "应该执行了一些操作，但实际为 0"
-    );
+    assert!(total_ops_count > 0, "应该执行了一些操作，但实际为 0");
 
     // 清理
     stop.store(true, Ordering::Relaxed);
@@ -329,4 +326,3 @@ fn test_idle_counts_rapid_operations() {
     server_handle.join().unwrap();
     pool.close().unwrap();
 }
-

@@ -16,8 +16,9 @@ allow = [
 
 [advisories]
 # 安全建议检查
-db-path = ""
-db-urls = ["https://github.com/rustsec/advisory-db"]
+# 如果网络不可用，可以跳过 advisories 检查或使用本地数据库
+# db-path = ""
+# db-urls = ["https://github.com/rustsec/advisory-db"]
 
 [sources]
 # 允许的源代码

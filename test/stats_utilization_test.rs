@@ -23,15 +23,15 @@ fn test_stats_utilization() {
     // 创建测试服务器
     let tcp_listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let tcp_addr = tcp_listener.local_addr().unwrap().to_string();
-    
+
     let udp_socket = UdpSocket::bind("127.0.0.1:0").unwrap();
     let udp_addr = udp_socket.local_addr().unwrap().to_string();
-    
+
     // 使用标志位控制服务器线程退出
     let stop = Arc::new(AtomicBool::new(false));
     let stop_tcp = stop.clone();
     let stop_udp = stop.clone();
-    
+
     // 启动简单的echo服务器
     let tcp_listener_clone = tcp_listener.try_clone().unwrap();
     let tcp_handle = thread::spawn(move || {
@@ -72,7 +72,7 @@ fn test_stats_utilization() {
             }
         }
     });
-    
+
     let udp_socket_clone = udp_socket.try_clone().unwrap();
     let udp_handle = thread::spawn(move || {
         udp_socket_clone.set_nonblocking(true).unwrap();
@@ -109,17 +109,15 @@ fn test_stats_utilization() {
     config.dialer = Some(Box::new({
         let tcp_addr = tcp_addr.clone();
         let udp_addr = udp_addr.clone();
-        move |protocol: Option<Protocol>| {
-            match protocol {
-                Some(Protocol::UDP) => {
-                    let socket = UdpSocket::bind("127.0.0.1:0")?;
-                    socket.connect(&udp_addr)?;
-                    Ok(ConnectionType::Udp(socket))
-                }
-                _ => {
-                    let stream = TcpStream::connect(&tcp_addr)?;
-                    Ok(ConnectionType::Tcp(stream))
-                }
+        move |protocol: Option<Protocol>| match protocol {
+            Some(Protocol::UDP) => {
+                let socket = UdpSocket::bind("127.0.0.1:0")?;
+                socket.connect(&udp_addr)?;
+                Ok(ConnectionType::Udp(socket))
+            }
+            _ => {
+                let stream = TcpStream::connect(&tcp_addr)?;
+                Ok(ConnectionType::Tcp(stream))
             }
         }
     }));
@@ -135,25 +133,25 @@ fn test_stats_utilization() {
     println!("\n1. 测试连接创建统计...");
     let mut tcp_conns = Vec::new();
     let mut udp_conns = Vec::new();
-    
+
     // 创建一些TCP连接
     for _ in 0..10 {
         if let Ok(conn) = pool.get_tcp() {
             tcp_conns.push(conn);
         }
     }
-    
+
     // 创建一些UDP连接
     for _ in 0..5 {
         if let Ok(conn) = pool.get_udp() {
             udp_conns.push(conn);
         }
     }
-    
+
     let stats_after_create = pool.stats();
     println!("创建连接后统计:");
     print_stats(&stats_after_create);
-    
+
     assert!(
         stats_after_create.total_connections_created >= 15,
         "应该有至少15个连接被创建"
@@ -180,7 +178,7 @@ fn test_stats_utilization() {
     drop(tcp_conns);
     drop(udp_conns);
     thread::sleep(Duration::from_millis(100)); // 等待连接归还
-    
+
     // 重新获取连接（应该复用）
     let mut reused_conns = Vec::new();
     for _ in 0..10 {
@@ -188,11 +186,11 @@ fn test_stats_utilization() {
             reused_conns.push(conn);
         }
     }
-    
+
     let stats_after_reuse = pool.stats();
     println!("复用连接后统计:");
     print_stats(&stats_after_reuse);
-    
+
     assert!(
         stats_after_reuse.total_connections_reused > 0,
         "应该有连接被复用"
@@ -206,14 +204,14 @@ fn test_stats_utilization() {
     println!("\n3. 测试活跃/空闲连接统计...");
     let active_before = stats_after_reuse.current_active_connections;
     let idle_before = stats_after_reuse.current_idle_connections;
-    
+
     drop(reused_conns);
     thread::sleep(Duration::from_millis(100));
-    
+
     let stats_after_return = pool.stats();
     println!("归还连接后统计:");
     print_stats(&stats_after_return);
-    
+
     assert!(
         stats_after_return.current_active_connections < active_before,
         "归还后活跃连接应该减少"
@@ -226,13 +224,13 @@ fn test_stats_utilization() {
     // 4. 测试连接关闭统计
     println!("\n4. 测试连接关闭统计...");
     let closed_before = stats_after_return.total_connections_closed;
-    
+
     // 创建并立即关闭一些连接
     for _ in 0..5 {
         let _conn = pool.get_tcp();
     }
     thread::sleep(Duration::from_millis(50));
-    
+
     // 强制关闭连接池中的连接（通过达到max_idle限制）
     let mut conns = Vec::new();
     for _ in 0..35 {
@@ -242,11 +240,11 @@ fn test_stats_utilization() {
     }
     drop(conns);
     thread::sleep(Duration::from_millis(500)); // 等待清理线程执行
-    
+
     let stats_after_close = pool.stats();
     println!("关闭连接后统计:");
     print_stats(&stats_after_close);
-    
+
     // 注意：连接关闭可能由后台清理线程异步执行，所以可能不会立即反映在统计中
     // 我们只验证连接数不超过最大值
     assert!(
@@ -254,7 +252,7 @@ fn test_stats_utilization() {
         "当前连接数不应超过最大值: {}",
         stats_after_close.current_connections
     );
-    
+
     // 如果有关闭的连接，验证统计
     if stats_after_close.total_connections_closed > closed_before {
         assert!(
@@ -267,7 +265,7 @@ fn test_stats_utilization() {
     println!("\n5. 测试并发获取统计...");
     let gets_before = stats_after_close.successful_gets;
     let requests_before = stats_after_close.total_get_requests;
-    
+
     let handles: Vec<_> = (0..20)
         .map(|_| {
             let pool = pool.clone();
@@ -281,15 +279,15 @@ fn test_stats_utilization() {
             })
         })
         .collect();
-    
+
     for handle in handles {
         handle.join().unwrap();
     }
-    
+
     let stats_after_concurrent = pool.stats();
     println!("并发操作后统计:");
     print_stats(&stats_after_concurrent);
-    
+
     assert!(
         stats_after_concurrent.successful_gets > gets_before,
         "并发操作应该增加成功获取数"
@@ -304,7 +302,7 @@ fn test_stats_utilization() {
     let stats_final = pool.stats();
     println!("最终统计:");
     print_stats(&stats_final);
-    
+
     if stats_final.successful_gets > 0 {
         assert!(
             stats_final.average_get_time.as_nanos() > 0,
@@ -319,7 +317,7 @@ fn test_stats_utilization() {
     // 7. 验证统计数据一致性
     println!("\n7. 验证统计数据一致性...");
     let stats = pool.stats();
-    
+
     // 检查连接数一致性（允许一定误差，因为在高并发下统计可能有短暂不一致）
     // current_connections 是准确的（基于实际连接数），但 active/idle 可能不准确
     assert!(
@@ -327,34 +325,40 @@ fn test_stats_utilization() {
         "当前连接数不应该为负数: {}",
         stats.current_connections
     );
-    
+
     // TCP和UDP连接数的验证（允许一定误差）
     let tcp_udp_total = stats.current_tcp_connections + stats.current_udp_connections;
     let total_diff = (stats.current_connections - tcp_udp_total).abs();
     if total_diff > 10 {
-        eprintln!("警告: TCP+UDP连接数统计不一致: 当前={}, TCP+UDP={}, 差异={}", 
-            stats.current_connections, tcp_udp_total, total_diff);
+        eprintln!(
+            "警告: TCP+UDP连接数统计不一致: 当前={}, TCP+UDP={}, 差异={}",
+            stats.current_connections, tcp_udp_total, total_diff
+        );
     }
-    
+
     // 检查获取请求一致性（这个应该是准确的）
     let expected_requests = stats.successful_gets + stats.failed_gets + stats.timeout_gets;
     if stats.total_get_requests != expected_requests {
-        eprintln!("警告: 获取请求统计不一致: 总请求={}, 成功+失败+超时={}", 
-            stats.total_get_requests, expected_requests);
+        eprintln!(
+            "警告: 获取请求统计不一致: 总请求={}, 成功+失败+超时={}",
+            stats.total_get_requests, expected_requests
+        );
         // 允许一定误差，因为在高并发下可能有竞争条件
         let diff = (stats.total_get_requests - expected_requests).abs();
         if diff > 100 {
-            panic!("获取请求统计严重不一致: 总请求={}, 成功+失败+超时={}, 差异={}", 
-                stats.total_get_requests, expected_requests, diff);
+            panic!(
+                "获取请求统计严重不一致: 总请求={}, 成功+失败+超时={}, 差异={}",
+                stats.total_get_requests, expected_requests, diff
+            );
         }
     }
 
     // 8. 验证所有统计指标都被使用
     println!("\n8. 验证所有统计指标都被使用...");
     let all_stats = pool.stats();
-    
+
     let mut unused_indicators = Vec::new();
-    
+
     // 检查关键指标是否被使用
     if all_stats.total_connections_created == 0 {
         unused_indicators.push("total_connections_created");
@@ -365,30 +369,26 @@ fn test_stats_utilization() {
     if all_stats.total_get_requests == 0 {
         unused_indicators.push("total_get_requests");
     }
-    
+
     if !unused_indicators.is_empty() {
         panic!("以下统计指标未被使用: {:?}", unused_indicators);
     }
-    
+
     println!("\n✅ 统计功能利用率测试通过！");
     println!("所有关键统计指标都被正确使用和更新。");
 
     // 关闭连接池
     pool.close().unwrap();
-    
+
     // 停止服务器
     stop.store(true, Ordering::Relaxed);
     drop(tcp_listener);
     drop(udp_socket);
-    
+
     // 等待服务器线程退出（设置超时）
-    let tcp_join_handle = thread::spawn(move || {
-        tcp_handle.join()
-    });
-    let udp_join_handle = thread::spawn(move || {
-        udp_handle.join()
-    });
-    
+    let tcp_join_handle = thread::spawn(move || tcp_handle.join());
+    let udp_join_handle = thread::spawn(move || udp_handle.join());
+
     // 等待最多1秒
     thread::sleep(Duration::from_millis(100));
     let _ = tcp_join_handle.join();
@@ -397,45 +397,53 @@ fn test_stats_utilization() {
 
 fn print_stats(stats: &Stats) {
     println!("  连接统计:");
-    println!("    创建: {}, 关闭: {}, 当前: {}", 
-        stats.total_connections_created,
-        stats.total_connections_closed,
-        stats.current_connections);
-    println!("    活跃: {}, 空闲: {}", 
-        stats.current_active_connections,
-        stats.current_idle_connections);
-    println!("    TCP: {} (空闲: {}), UDP: {} (空闲: {})", 
+    println!(
+        "    创建: {}, 关闭: {}, 当前: {}",
+        stats.total_connections_created, stats.total_connections_closed, stats.current_connections
+    );
+    println!(
+        "    活跃: {}, 空闲: {}",
+        stats.current_active_connections, stats.current_idle_connections
+    );
+    println!(
+        "    TCP: {} (空闲: {}), UDP: {} (空闲: {})",
         stats.current_tcp_connections,
         stats.current_tcp_idle_connections,
         stats.current_udp_connections,
-        stats.current_udp_idle_connections);
-    println!("    IPv4: {} (空闲: {}), IPv6: {} (空闲: {})", 
+        stats.current_udp_idle_connections
+    );
+    println!(
+        "    IPv4: {} (空闲: {}), IPv6: {} (空闲: {})",
         stats.current_ipv4_connections,
         stats.current_ipv4_idle_connections,
         stats.current_ipv6_connections,
-        stats.current_ipv6_idle_connections);
-    
+        stats.current_ipv6_idle_connections
+    );
+
     println!("  获取统计:");
-    println!("    总请求: {}, 成功: {}, 失败: {}, 超时: {}", 
-        stats.total_get_requests,
-        stats.successful_gets,
-        stats.failed_gets,
-        stats.timeout_gets);
-    println!("    复用: {}, 复用率: {:.2}%", 
+    println!(
+        "    总请求: {}, 成功: {}, 失败: {}, 超时: {}",
+        stats.total_get_requests, stats.successful_gets, stats.failed_gets, stats.timeout_gets
+    );
+    println!(
+        "    复用: {}, 复用率: {:.2}%",
         stats.total_connections_reused,
-        stats.average_reuse_count * 100.0);
-    println!("    平均获取时间: {:?}, 总获取时间: {:?}", 
-        stats.average_get_time,
-        stats.total_get_time);
-    
+        stats.average_reuse_count * 100.0
+    );
+    println!(
+        "    平均获取时间: {:?}, 总获取时间: {:?}",
+        stats.average_get_time, stats.total_get_time
+    );
+
     println!("  健康检查统计:");
-    println!("    尝试: {}, 失败: {}, 不健康: {}", 
-        stats.health_check_attempts,
-        stats.health_check_failures,
-        stats.unhealthy_connections);
-    
+    println!(
+        "    尝试: {}, 失败: {}, 不健康: {}",
+        stats.health_check_attempts, stats.health_check_failures, stats.unhealthy_connections
+    );
+
     println!("  错误统计:");
-    println!("    连接错误: {}, 泄漏连接: {}", 
-        stats.connection_errors,
-        stats.leaked_connections);
+    println!(
+        "    连接错误: {}, 泄漏连接: {}",
+        stats.connection_errors, stats.leaked_connections
+    );
 }

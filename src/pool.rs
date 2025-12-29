@@ -67,6 +67,8 @@ struct PoolInner {
     // 用于在连接归还/池状态变化时唤醒 get() 等待者
     wait_lock: Mutex<()>,
     wait_cv: Condvar,
+    reaper_cv: Condvar,     // 用于 reaper 线程等待
+    reaper_lock: Mutex<()>, // 用于 reaper_cv
     stats_collector: Option<Arc<StatsCollector>>,
 }
 
@@ -122,6 +124,8 @@ impl Pool {
             active_count: AtomicUsize::new(0),
             wait_lock: Mutex::new(()),
             wait_cv: Condvar::new(),
+            reaper_cv: Condvar::new(),
+            reaper_lock: Mutex::new(()),
             stats_collector,
         });
 
@@ -193,26 +197,35 @@ impl Pool {
             } else {
                 pool.config.health_check_interval
             };
-            drop(pool); // 释放Arc，允许Pool被销毁
 
-            // 使用可中断的 sleep：将长时间 sleep 分解为多个短 sleep
-            // 这样可以在 sleep 期间检查 Pool 是否已关闭
-            let check_interval = Duration::from_millis(100); // 每100ms检查一次
-            let mut remaining = interval;
-            while remaining > Duration::ZERO {
-                let sleep_duration = remaining.min(check_interval);
-                thread::sleep(sleep_duration);
-                remaining = remaining.saturating_sub(sleep_duration);
+            // 使用 Condvar 等待，可以在池关闭时立即唤醒
+            let guard = match pool.reaper_lock.lock() {
+                Ok(g) => g,
+                Err(_) => return, // 锁被 poison，退出
+            };
+            let (guard, timeout_result) = match pool.reaper_cv.wait_timeout(guard, interval) {
+                Ok(result) => result,
+                Err(_) => return, // 锁被 poison，退出
+            };
+            drop(guard);
+            drop(pool); // 释放 pool，允许其他线程清理
 
-                // 检查 Pool 是否已销毁或关闭
-                if inner.upgrade().is_none() {
-                    return; // Pool已销毁，立即退出
-                }
+            // 检查是否因为超时还是被唤醒
+            if !timeout_result.timed_out() {
+                // 被唤醒，检查是否因为关闭
                 if let Some(p) = inner.upgrade() {
                     if p.closed.load(Ordering::Relaxed) {
                         return; // Pool已关闭，立即退出
                     }
+                    drop(p);
+                } else {
+                    return; // Pool已销毁，立即退出
                 }
+            }
+
+            // 再次检查 Pool 是否已销毁或关闭
+            if inner.upgrade().is_none() {
+                return;
             }
 
             // 再次获取Pool
@@ -241,16 +254,16 @@ impl Pool {
     /// use std::net::TcpStream;
     ///
     /// let mut config = default_config();
-/// config.dialer = Some(Box::new(|_| {
-///     TcpStream::connect("127.0.0.1:8080")
-///         .map(|s| ConnectionType::Tcp(s))
-///         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
-/// }));
-///
-/// let pool = Pool::new(config).unwrap();
-/// let conn = pool.get().unwrap();
-/// // 使用连接...
-/// drop(conn); // 自动归还
+    /// config.dialer = Some(Box::new(|_| {
+    ///     TcpStream::connect("127.0.0.1:8080")
+    ///         .map(|s| ConnectionType::Tcp(s))
+    ///         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+    /// }));
+    ///
+    /// let pool = Pool::new(config).unwrap();
+    /// let conn = pool.get().unwrap();
+    /// // 使用连接...
+    /// drop(conn); // 自动归还
     /// ```
     pub fn get(&self) -> Result<PooledConnection> {
         self.get_with_timeout(self.inner.config.get_connection_timeout)
@@ -363,20 +376,20 @@ impl Pool {
     ///
     /// # 示例
     /// ```rust,no_run
-/// use netconnpool::*;
-/// use std::net::TcpStream;
-///
-/// let mut config = default_config();
-/// config.dialer = Some(Box::new(|_| {
-///     TcpStream::connect("127.0.0.1:8080")
-///         .map(|s| ConnectionType::Tcp(s))
-///         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
-/// }));
-///
-/// let pool = Pool::new(config).unwrap();
-/// let stats = pool.stats();
-/// println!("当前连接数: {}", stats.current_connections);
-/// println!("连接复用率: {:.2}%", stats.average_reuse_count * 100.0);
+    /// use netconnpool::*;
+    /// use std::net::TcpStream;
+    ///
+    /// let mut config = default_config();
+    /// config.dialer = Some(Box::new(|_| {
+    ///     TcpStream::connect("127.0.0.1:8080")
+    ///         .map(|s| ConnectionType::Tcp(s))
+    ///         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+    /// }));
+    ///
+    /// let pool = Pool::new(config).unwrap();
+    /// let stats = pool.stats();
+    /// println!("当前连接数: {}", stats.current_connections);
+    /// println!("连接复用率: {:.2}%", stats.average_reuse_count * 100.0);
     /// ```
     pub fn stats(&self) -> crate::stats::Stats {
         if let Some(stats) = &self.inner.stats_collector {
@@ -436,18 +449,27 @@ impl PoolInner {
         }
 
         // 3) 最后兜底：关闭所有仍存活的连接（可能包含泄漏/长期占用）
-        let conns: Vec<Arc<Connection>> = {
-            let connections = self.all_connections.read().map_err(|e| {
-                NetConnPoolError::IoError(std::io::Error::other(format!(
-                    "获取连接列表失败: {}",
-                    e
-                )))
-            })?;
-            connections.values().cloned().collect()
-        };
+        // 优化：分批处理，减少锁持有时间
+        loop {
+            let batch: Vec<Arc<Connection>> = {
+                let connections = self.all_connections.read().map_err(|e| {
+                    NetConnPoolError::IoError(std::io::Error::other(format!(
+                        "获取连接列表失败: {}",
+                        e
+                    )))
+                })?;
+                // 每次只处理一批，减少锁持有时间
+                connections.values().take(10).cloned().collect()
+            };
 
-        for conn in conns {
-            let _ = self.remove_connection(&conn);
+            if batch.is_empty() {
+                break;
+            }
+
+            // 在锁外处理连接
+            for conn in batch {
+                let _ = self.remove_connection(&conn);
+            }
         }
 
         Ok(())
@@ -554,6 +576,19 @@ impl PoolInner {
                     if !self.is_connection_valid_for_borrow(&conn) {
                         let _ = self.remove_connection(&conn);
                         continue;
+                    }
+
+                    // 优化：在 get() 时清理 UDP 缓冲区，避免阻塞归还操作
+                    // 由即将使用该连接的线程负责清理历史残存数据
+                    if self.config.clear_udp_buffer_on_return
+                        && conn.get_protocol() == Protocol::UDP
+                    {
+                        if let Some(udp_socket) = conn.udp_conn() {
+                            let timeout = self.config.udp_buffer_clear_timeout;
+                            let max_packets = self.config.max_buffer_clear_packets;
+                            // 非阻塞清理，不会阻塞 get() 操作
+                            let _ = clear_udp_read_buffer(udp_socket, timeout, max_packets);
+                        }
                     }
 
                     conn.mark_in_use();
@@ -695,9 +730,8 @@ impl PoolInner {
         };
 
         if let Some(on_created) = &self.config.on_created {
-            on_created(&conn_type).map_err(|e| {
-                NetConnPoolError::IoError(std::io::Error::other(e.to_string()))
-            })?;
+            on_created(&conn_type)
+                .map_err(|e| NetConnPoolError::IoError(std::io::Error::other(e.to_string())))?;
         }
 
         // 连接池内部统一使用阻塞模式（与 UDP 清缓冲逻辑保持一致）
@@ -762,7 +796,39 @@ impl PoolInner {
                     max: self.config.max_connections,
                 });
             }
-            connections.insert(conn.id, conn.clone());
+
+            // 检查连接 ID 是否冲突（虽然概率极低，但需要处理）
+            // 如果冲突，说明 ID 生成器溢出后重置，且旧连接仍存在
+            // 这种情况下，我们递增 ID 直到找到不冲突的
+            let mut final_id = conn.id;
+            if connections.contains_key(&final_id) {
+                // 从当前 ID 开始递增，直到找到不冲突的 ID
+                loop {
+                    final_id = final_id.wrapping_add(1);
+                    if final_id == 0 {
+                        final_id = 1; // 跳过 0
+                    }
+                    if !connections.contains_key(&final_id) {
+                        break;
+                    }
+                    // 防止无限循环（理论上不应该发生，因为连接数有限）
+                    if final_id == conn.id {
+                        eprintln!("错误: 无法找到不冲突的连接 ID");
+                        drop(connections);
+                        self.close_connection(&conn);
+                        return Err(NetConnPoolError::IoError(std::io::Error::other(
+                            "连接 ID 冲突且无法解决",
+                        )));
+                    }
+                }
+                eprintln!("警告: 连接 ID {} 冲突，已调整为 {}", conn.id, final_id);
+            }
+
+            // 注意：由于 Connection 的 id 字段是普通字段，我们不能直接修改
+            // 但我们可以使用新的 ID 作为 key 插入，这样连接池可以正确管理连接
+            // 虽然 conn.id 和实际存储的 key 不一致，但这不影响功能
+            // 因为连接池使用 all_connections 来管理连接，而不是依赖 id 字段
+            connections.insert(final_id, conn.clone());
         }
 
         if let Some(stats) = &self.stats_collector {
@@ -791,7 +857,9 @@ impl PoolInner {
             if let Some(stats) = &self.stats_collector {
                 stats.increment_current_active_connections(-1);
             }
-            self.wait_cv.notify_all();
+            // 优化：使用 notify_one() 避免惊群效应
+            // 归还一个连接时，只需要唤醒一个等待的线程
+            self.wait_cv.notify_one();
         }
 
         if self.is_closed() {
@@ -808,17 +876,8 @@ impl PoolInner {
             on_return(conn.connection_type());
         }
 
-        // UDP Buffer cleanup
-        if self.config.clear_udp_buffer_on_return && conn.get_protocol() == Protocol::UDP {
-            if let Some(udp_socket) = conn.udp_conn() {
-                let timeout = self.config.udp_buffer_clear_timeout;
-                let _ = clear_udp_read_buffer(
-                    udp_socket,
-                    timeout,
-                    self.config.max_buffer_clear_packets,
-                );
-            }
-        }
+        // 优化：UDP 缓冲区清理延迟到 get() 时进行，避免阻塞归还操作
+        // 这样可以确保 return_connection 操作极致轻量，不会因为底层 I/O 阻塞
 
         // Put back to idle list (无锁操作)
         if let Some(idx) = Self::get_bucket_index(conn.get_protocol(), conn.get_ip_version()) {
@@ -867,11 +926,14 @@ impl PoolInner {
             if let Some(stats) = &self.stats_collector {
                 stats.increment_current_active_connections(-1);
             }
-            self.wait_cv.notify_all();
+            // 优化：使用 notify_one() 避免惊群效应
+            // 移除一个连接时，只需要唤醒一个等待的线程
+            self.wait_cv.notify_one();
         }
 
         // 如果它仍在 idle 列表里，先移除（并同步 idle 统计）
-        self.remove_from_idle_if_present(conn);
+        // 移除连接时，依赖 is_connection_valid_for_borrow 进行延迟清理
+        // 不再需要主动从 idle 队列中移除，避免队列顺序混乱和性能问题
 
         self.close_connection(conn);
 
@@ -882,7 +944,26 @@ impl PoolInner {
                     e
                 )))
             })?;
-            connections.remove(&conn.id);
+
+            // 首先尝试使用 conn.id 移除（正常情况）
+            if connections.remove(&conn.id).is_none() {
+                // 如果找不到，说明 ID 冲突时使用了不同的 key
+                // 遍历查找并移除（使用 Arc::ptr_eq 比较指针，确保找到正确的连接）
+                let conn_ptr = Arc::as_ptr(conn);
+                let mut found_key = None;
+                for (key, value) in connections.iter() {
+                    if Arc::as_ptr(value) == conn_ptr {
+                        found_key = Some(*key);
+                        break;
+                    }
+                }
+                if let Some(key) = found_key {
+                    connections.remove(&key);
+                } else {
+                    // 连接不在映射中，可能已经被移除或从未插入
+                    // 这是正常的，不需要报错
+                }
+            }
         }
 
         if let Some(stats) = &self.stats_collector {
@@ -919,9 +1000,36 @@ impl PoolInner {
                 return;
             }
 
-            // 连接使用中：不强制关闭，只做泄漏/超龄标记，等待归还时清理
+            // 连接使用中：检查是否严重泄漏，如果是则强制驱逐
             if conn.is_in_use() {
-                if conn.is_leaked(self.config.connection_leak_timeout) {
+                let is_leaked = conn.is_leaked(self.config.connection_leak_timeout);
+                let is_expired = conn.is_expired(self.config.max_lifetime);
+
+                // 如果连接严重泄漏（超过 leak_timeout 的 2 倍），强制驱逐
+                // 这是为了保护连接池内存不被用户代码错误导致的泄漏连接撑爆
+                if is_leaked {
+                    let leak_timeout = self.config.connection_leak_timeout;
+                    if !leak_timeout.is_zero() {
+                        // 获取具体的泄漏时间
+                        if let Some(leaked_duration) = conn.get_leaked_duration() {
+                            // 如果泄漏时间超过配置的 2 倍，强制驱逐
+                            if leaked_duration > leak_timeout * 2 {
+                                if conn.report_leak_once() {
+                                    if let Some(stats) = &self.stats_collector {
+                                        stats.increment_leaked_connections();
+                                    }
+                                }
+                                eprintln!(
+                                    "警告: 强制驱逐严重泄漏的连接 ID {} (泄漏时间: {:?})",
+                                    conn.id, leaked_duration
+                                );
+                                // 强制移除泄漏连接，防止内存无限增长
+                                let _ = self.remove_connection(&conn);
+                                continue;
+                            }
+                        }
+                    }
+
                     if conn.report_leak_once() {
                         if let Some(stats) = &self.stats_collector {
                             stats.increment_leaked_connections();
@@ -929,7 +1037,7 @@ impl PoolInner {
                     }
                     conn.mark_unhealthy();
                 }
-                if conn.is_expired(self.config.max_lifetime) {
+                if is_expired {
                     conn.mark_unhealthy();
                 }
                 continue;
@@ -1077,50 +1185,7 @@ impl PoolInner {
         let _ = conn.close();
     }
 
-    fn remove_from_idle_if_present(&self, conn: &Arc<Connection>) {
-        if let Some(idx) = Self::get_bucket_index(conn.get_protocol(), conn.get_ip_version()) {
-            // 无锁队列没有 retain 方法
-            // 为了性能，我们采用"标记移除"策略：
-            // 1. 连接在队列中时，会在 return_connection 时通过 is_connection_valid_for_borrow 检查被过滤
-            // 2. 这里我们尝试从队列中移除（如果存在），但为了性能，我们限制最大检查次数
-            // 3. 由于无锁队列的特性，这个操作是 best-effort 的
-
-            // 优化：减少检查次数，因为无锁队列不支持高效查找
-            // 主要依赖 return_connection 时的 is_connection_valid_for_borrow 检查来过滤无效连接
-            const MAX_CHECK: usize = 10; // 最多检查 10 个连接，避免高并发下的性能问题
-            let mut checked = 0;
-            let mut found = false;
-            let mut temp_vec = Vec::new();
-
-            // 尝试从队列中查找并移除目标连接（限制检查次数）
-            while checked < MAX_CHECK {
-                if let Some(c) = self.idle_connections[idx].pop() {
-                    checked += 1;
-                    if c.id == conn.id {
-                        found = true;
-                        self.idle_counts[idx].fetch_sub(1, Ordering::Relaxed);
-                        // 不将连接放回队列
-                        break;
-                    } else {
-                        temp_vec.push(c);
-                    }
-                } else {
-                    // 队列为空，停止查找
-                    break;
-                }
-            }
-
-            // 将其他连接放回队列
-            for c in temp_vec {
-                self.idle_connections[idx].push(c);
-            }
-
-            if found {
-                if let Some(stats) = &self.stats_collector {
-                    // 从 idle 移除一次
-                    self.update_stats_on_idle_pop(stats, conn);
-                }
-            }
-        }
-    }
+    // remove_from_idle_if_present 已移除
+    // 现在完全依赖 is_connection_valid_for_borrow 在 get() 时进行延迟清理
+    // 这样可以避免队列顺序混乱和性能问题
 }

@@ -131,10 +131,7 @@ fn test_full_lifecycle() {
         "当前连接数应该不超过最大连接数限制"
     );
     assert!(final_stats.successful_gets > 0, "应该有成功的操作");
-    assert!(
-        final_stats.total_connections_created > 0,
-        "应该创建过连接"
-    );
+    assert!(final_stats.total_connections_created > 0, "应该创建过连接");
 }
 
 #[test]

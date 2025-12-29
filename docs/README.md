@@ -33,6 +33,12 @@
   - 性能分析
   - 改进建议
 
+- **[IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md)** - 深度代码审查改进计划
+  - 核心逻辑缺陷与漏洞
+  - 重复设计与冗余瓶颈
+  - 可改进的逻辑设计
+  - 分阶段实施建议
+
 ## 🚀 快速开始
 
 1. **查看项目结构**: [STRUCTURE.md](STRUCTURE.md)

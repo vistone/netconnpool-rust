@@ -18,16 +18,16 @@ use test_server::TestServer;
 /// 生成干扰数据（简化版，用于快速测试）
 fn generate_fuzz_data(pattern: usize) -> Vec<u8> {
     match pattern % 10 {
-        0 => vec![], // 空数据
-        1 => vec![0u8; 1], // 最小数据
-        2 => vec![0xFF; 1], // 全1
-        3 => vec![0u8; 1024], // 1KB
-        4 => vec![0xFF; 1024], // 1KB全1
-        5 => vec![0u8; 65535], // 最大UDP包
-        6 => (0u8..=255).collect(), // 所有字节值
+        0 => vec![],                                           // 空数据
+        1 => vec![0u8; 1],                                     // 最小数据
+        2 => vec![0xFF; 1],                                    // 全1
+        3 => vec![0u8; 1024],                                  // 1KB
+        4 => vec![0xFF; 1024],                                 // 1KB全1
+        5 => vec![0u8; 65535],                                 // 最大UDP包
+        6 => (0u8..=255).collect(),                            // 所有字节值
         7 => b"GET / HTTP/1.1\r\nHost: test\r\n\r\n".to_vec(), // HTTP格式
-        8 => b"{\"test\":\"value\"}".to_vec(), // JSON格式
-        _ => vec![0xAA; 1000], // 混合数据
+        8 => b"{\"test\":\"value\"}".to_vec(),                 // JSON格式
+        _ => vec![0xAA; 1000],                                 // 混合数据
     }
 }
 
@@ -44,7 +44,7 @@ fn test_quick_fuzzing_all_features() {
     let server = TestServer::new().unwrap();
     let tcp_addr = server.tcp_addr().to_string();
     let udp_addr = server.udp_addr().to_string();
-    
+
     println!("服务器地址:");
     println!("  TCP: {}", tcp_addr);
     println!("  UDP: {}", udp_addr);
@@ -68,19 +68,15 @@ fn test_quick_fuzzing_all_features() {
     // 配置Dialer
     let tcp_addr_clone = tcp_addr.clone();
     let udp_addr_clone = udp_addr.clone();
-    config.dialer = Some(Box::new(move |protocol| {
-        match protocol {
-            Some(Protocol::UDP) => {
-                let socket = UdpSocket::bind("0.0.0.0:0")?;
-                socket.connect(&udp_addr_clone)?;
-                Ok(ConnectionType::Udp(socket))
-            }
-            _ => {
-                TcpStream::connect(&tcp_addr_clone)
-                    .map(|s| ConnectionType::Tcp(s))
-                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
-            }
+    config.dialer = Some(Box::new(move |protocol| match protocol {
+        Some(Protocol::UDP) => {
+            let socket = UdpSocket::bind("0.0.0.0:0")?;
+            socket.connect(&udp_addr_clone)?;
+            Ok(ConnectionType::Udp(socket))
         }
+        _ => TcpStream::connect(&tcp_addr_clone)
+            .map(|s| ConnectionType::Tcp(s))
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>),
     }));
 
     let pool = Arc::new(Pool::new(config).unwrap());
@@ -120,26 +116,28 @@ fn test_quick_fuzzing_all_features() {
                     iteration += 1;
                     let pattern = (i * 100 + iteration) % 10;
                     let fuzz_data = generate_fuzz_data(pattern);
-                    
+
                     // 检查是否超时
                     if start.elapsed() >= test_duration {
                         break;
                     }
-                    
+
                     match pool.get_tcp() {
                         Ok(conn) => {
                             if let Some(mut stream) = conn.tcp_conn() {
                                 // 设置非阻塞模式以避免卡住
                                 let _ = stream.set_nonblocking(true);
-                                
+
                                 if stream.write_all(&fuzz_data).is_ok() {
-                                    bytes_sent_clone.fetch_add(fuzz_data.len() as u64, Ordering::Relaxed);
-                                    
+                                    bytes_sent_clone
+                                        .fetch_add(fuzz_data.len() as u64, Ordering::Relaxed);
+
                                     // 非阻塞读取，尝试读取响应
                                     let mut response = vec![0u8; fuzz_data.len().min(8192)];
                                     match stream.read(&mut response) {
                                         Ok(size) if size > 0 => {
-                                            bytes_recv_clone.fetch_add(size as u64, Ordering::Relaxed);
+                                            bytes_recv_clone
+                                                .fetch_add(size as u64, Ordering::Relaxed);
                                             tcp_ops.fetch_add(1, Ordering::Relaxed);
                                         }
                                         Ok(_) => {
@@ -187,24 +185,26 @@ fn test_quick_fuzzing_all_features() {
                     iteration += 1;
                     let pattern = (i * 100 + iteration) % 10;
                     let fuzz_data = generate_fuzz_data(pattern);
-                    
+
                     // 检查是否超时
                     if start.elapsed() >= test_duration {
                         break;
                     }
-                    
+
                     match pool.get_udp() {
                         Ok(conn) => {
                             if let Some(socket) = conn.udp_conn() {
                                 // 设置非阻塞模式以避免卡住
                                 let _ = socket.set_nonblocking(true);
-                                
+
                                 if socket.send(&fuzz_data).is_ok() {
-                                    bytes_sent_clone.fetch_add(fuzz_data.len() as u64, Ordering::Relaxed);
+                                    bytes_sent_clone
+                                        .fetch_add(fuzz_data.len() as u64, Ordering::Relaxed);
                                     let mut response = vec![0u8; 65536];
                                     match socket.recv(&mut response) {
                                         Ok(size) => {
-                                            bytes_recv_clone.fetch_add(size as u64, Ordering::Relaxed);
+                                            bytes_recv_clone
+                                                .fetch_add(size as u64, Ordering::Relaxed);
                                             udp_ops.fetch_add(1, Ordering::Relaxed);
                                         }
                                         Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -247,12 +247,12 @@ fn test_quick_fuzzing_all_features() {
                     iteration += 1;
                     let pattern = (i * 100 + iteration) % 10;
                     let fuzz_data = generate_fuzz_data(pattern);
-                    
+
                     // 检查是否超时
                     if start.elapsed() >= test_duration {
                         break;
                     }
-                    
+
                     // 交替使用TCP和UDP
                     if iteration % 2 == 0 {
                         // TCP
@@ -260,7 +260,7 @@ fn test_quick_fuzzing_all_features() {
                             if let Some(mut stream) = conn.tcp_conn() {
                                 // 设置非阻塞模式
                                 let _ = stream.set_nonblocking(true);
-                                
+
                                 if stream.write_all(&fuzz_data).is_ok() {
                                     let mut buf = vec![0u8; fuzz_data.len().min(8192)];
                                     match stream.read(&mut buf) {
@@ -290,7 +290,7 @@ fn test_quick_fuzzing_all_features() {
                             if let Some(socket) = conn.udp_conn() {
                                 // 设置非阻塞模式
                                 let _ = socket.set_nonblocking(true);
-                                
+
                                 if socket.send(&fuzz_data).is_ok() {
                                     let mut buf = vec![0u8; 65536];
                                     match socket.recv(&mut buf) {
@@ -330,12 +330,12 @@ fn test_quick_fuzzing_all_features() {
                 let mut iteration = 0;
                 while start.elapsed() < test_duration {
                     iteration += 1;
-                    
+
                     // 检查是否超时
                     if start.elapsed() >= test_duration {
                         break;
                     }
-                    
+
                     // 测试不同的获取方式
                     match i % 4 {
                         0 => {
@@ -355,7 +355,7 @@ fn test_quick_fuzzing_all_features() {
                             let _ = pool.get_ipv4();
                         }
                     }
-                    
+
                     // 测试统计功能
                     if iteration % 100 == 0 {
                         let _stats = pool.stats();
@@ -378,18 +378,18 @@ fn test_quick_fuzzing_all_features() {
             // 使用可中断的sleep，分解为多个短sleep
             let sleep_chunk = Duration::from_millis(100);
             let mut remaining = Duration::from_secs(10);
-            
+
             while remaining > Duration::ZERO && monitor_start.elapsed() < test_duration {
                 let current_sleep = remaining.min(sleep_chunk);
                 thread::sleep(current_sleep);
                 remaining = remaining.saturating_sub(current_sleep);
             }
-            
+
             // 再次检查是否超时
             if monitor_start.elapsed() >= test_duration {
                 break;
             }
-            
+
             let elapsed = monitor_start.elapsed();
             let tcp_ops = monitor_tcp_ops.load(Ordering::Relaxed);
             let udp_ops = monitor_udp_ops.load(Ordering::Relaxed);
@@ -397,7 +397,7 @@ fn test_quick_fuzzing_all_features() {
             let udp_errs = monitor_udp_errs.load(Ordering::Relaxed);
             let crashes_count = monitor_crashes.load(Ordering::Relaxed);
             let stats = monitor_pool.stats();
-            
+
             println!(
                 "[{:?}] TCP: 操作={}, 错误={} | UDP: 操作={}, 错误={} | 崩溃={} | 连接: 当前={}, 创建={}, 复用={}",
                 elapsed,
@@ -421,7 +421,12 @@ fn test_quick_fuzzing_all_features() {
     println!();
 
     // 等待所有线程完成
-    for handle in tcp_handles.into_iter().chain(udp_handles).chain(mixed_handles).chain(feature_handles) {
+    for handle in tcp_handles
+        .into_iter()
+        .chain(udp_handles)
+        .chain(mixed_handles)
+        .chain(feature_handles)
+    {
         handle.join().unwrap();
     }
     monitor_handle.join().unwrap();
@@ -446,22 +451,26 @@ fn test_quick_fuzzing_all_features() {
     println!("  TCP统计:");
     println!("    操作数: {}", total_tcp_ops);
     println!("    错误数: {}", total_tcp_errs);
-    println!("    成功率: {:.2}%", 
+    println!(
+        "    成功率: {:.2}%",
         if total_tcp_ops + total_tcp_errs > 0 {
             (total_tcp_ops as f64 / (total_tcp_ops + total_tcp_errs) as f64) * 100.0
         } else {
             0.0
-        });
+        }
+    );
     println!();
     println!("  UDP统计:");
     println!("    操作数: {}", total_udp_ops);
     println!("    错误数: {}", total_udp_errs);
-    println!("    成功率: {:.2}%",
+    println!(
+        "    成功率: {:.2}%",
         if total_udp_ops + total_udp_errs > 0 {
             (total_udp_ops as f64 / (total_udp_ops + total_udp_errs) as f64) * 100.0
         } else {
             0.0
-        });
+        }
+    );
     println!();
     println!("  稳定性测试:");
     println!("    崩溃/异常: {}", total_crashes);
@@ -472,49 +481,69 @@ fn test_quick_fuzzing_all_features() {
     }
     println!();
     println!("  数据传输:");
-    println!("    发送: {:.2} MB", total_bytes_sent as f64 / 1024.0 / 1024.0);
-    println!("    接收: {:.2} MB", total_bytes_recv as f64 / 1024.0 / 1024.0);
+    println!(
+        "    发送: {:.2} MB",
+        total_bytes_sent as f64 / 1024.0 / 1024.0
+    );
+    println!(
+        "    接收: {:.2} MB",
+        total_bytes_recv as f64 / 1024.0 / 1024.0
+    );
     println!();
     println!("  连接池统计:");
     println!("    当前连接: {}", final_stats.current_connections);
-    println!("    活跃连接: {}, 空闲连接: {}", 
-        final_stats.current_active_connections,
-        final_stats.current_idle_connections);
+    println!(
+        "    活跃连接: {}, 空闲连接: {}",
+        final_stats.current_active_connections, final_stats.current_idle_connections
+    );
     println!("    创建连接: {}", final_stats.total_connections_created);
     println!("    关闭连接: {}", final_stats.total_connections_closed);
     println!("    连接复用: {}", final_stats.total_connections_reused);
-    println!("    复用率: {:.2}%", final_stats.average_reuse_count * 100.0);
-    println!("    TCP连接: {} (空闲: {}), UDP连接: {} (空闲: {})", 
+    println!(
+        "    复用率: {:.2}%",
+        final_stats.average_reuse_count * 100.0
+    );
+    println!(
+        "    TCP连接: {} (空闲: {}), UDP连接: {} (空闲: {})",
         final_stats.current_tcp_connections,
         final_stats.current_tcp_idle_connections,
         final_stats.current_udp_connections,
-        final_stats.current_udp_idle_connections);
-    println!("    IPv4连接: {} (空闲: {}), IPv6连接: {} (空闲: {})", 
+        final_stats.current_udp_idle_connections
+    );
+    println!(
+        "    IPv4连接: {} (空闲: {}), IPv6连接: {} (空闲: {})",
         final_stats.current_ipv4_connections,
         final_stats.current_ipv4_idle_connections,
         final_stats.current_ipv6_connections,
-        final_stats.current_ipv6_idle_connections);
-    println!("    总请求: {}, 成功获取: {}, 失败获取: {}, 超时: {}", 
+        final_stats.current_ipv6_idle_connections
+    );
+    println!(
+        "    总请求: {}, 成功获取: {}, 失败获取: {}, 超时: {}",
         final_stats.total_get_requests,
         final_stats.successful_gets,
         final_stats.failed_gets,
-        final_stats.timeout_gets);
-    println!("    平均获取时间: {:?}, 总获取时间: {:?}", 
-        final_stats.average_get_time,
-        final_stats.total_get_time);
-    println!("    健康检查: 尝试={}, 失败={}, 不健康={}", 
+        final_stats.timeout_gets
+    );
+    println!(
+        "    平均获取时间: {:?}, 总获取时间: {:?}",
+        final_stats.average_get_time, final_stats.total_get_time
+    );
+    println!(
+        "    健康检查: 尝试={}, 失败={}, 不健康={}",
         final_stats.health_check_attempts,
         final_stats.health_check_failures,
-        final_stats.unhealthy_connections);
-    println!("    错误: 连接错误={}, 泄漏连接={}", 
-        final_stats.connection_errors,
-        final_stats.leaked_connections);
-    
+        final_stats.unhealthy_connections
+    );
+    println!(
+        "    错误: 连接错误={}, 泄漏连接={}",
+        final_stats.connection_errors, final_stats.leaked_connections
+    );
+
     // 验证统计数据一致性
     // 注意：在高并发压力测试中，active_connections 和 idle_connections 的统计
     // 可能由于竞争条件导致不准确（甚至为负数），但 current_connections 是基于
     // 实际连接数计算的，是准确的。所以我们只验证 current_connections 是否合理。
-    
+
     // 验证当前连接数是否在合理范围内
     assert!(
         final_stats.current_connections >= 0,
@@ -526,20 +555,29 @@ fn test_quick_fuzzing_all_features() {
         "当前连接数不应该超过最大值: {}",
         final_stats.current_connections
     );
-    
+
     // 验证连接创建和关闭的统计是否合理
     assert!(
         final_stats.total_connections_created >= final_stats.total_connections_closed,
         "创建的连接数应该大于等于关闭的连接数"
     );
-    
+
     // 注意：在高并发压力测试中，active_connections 和 idle_connections 的统计
     // 可能不准确，这是已知问题。current_connections 是准确的，应该基于此进行验证。
     if final_stats.current_active_connections < 0 || final_stats.current_idle_connections < 0 {
         eprintln!("警告: 在高并发压力测试中，active/idle连接统计可能出现不准确");
-        eprintln!("  current_connections (准确): {}", final_stats.current_connections);
-        eprintln!("  current_active_connections: {}", final_stats.current_active_connections);
-        eprintln!("  current_idle_connections: {}", final_stats.current_idle_connections);
+        eprintln!(
+            "  current_connections (准确): {}",
+            final_stats.current_connections
+        );
+        eprintln!(
+            "  current_active_connections: {}",
+            final_stats.current_active_connections
+        );
+        eprintln!(
+            "  current_idle_connections: {}",
+            final_stats.current_idle_connections
+        );
         eprintln!("  这是已知问题，不影响系统的正常运行");
     }
     println!();
@@ -550,8 +588,11 @@ fn test_quick_fuzzing_all_features() {
 
     // 验证结果
     assert!(total_tcp_ops > 0 || total_udp_ops > 0, "应该有成功的操作");
-    assert!(final_stats.current_connections <= 100, "连接数不应超过最大值");
-    
+    assert!(
+        final_stats.current_connections <= 100,
+        "连接数不应超过最大值"
+    );
+
     // 崩溃检测
     if total_crashes > 0 {
         panic!("检测到 {} 次崩溃/异常！系统不稳定", total_crashes);
@@ -559,4 +600,3 @@ fn test_quick_fuzzing_all_features() {
 
     println!("✅ 快速模糊测试通过！所有功能正常工作，系统稳定！");
 }
-

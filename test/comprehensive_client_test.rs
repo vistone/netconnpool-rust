@@ -29,7 +29,7 @@ fn test_comprehensive_client_stress() {
     let server = TestServer::new().unwrap();
     let tcp_addr = server.tcp_addr().to_string();
     let udp_addr = server.udp_addr().to_string();
-    
+
     println!("服务器地址:");
     println!("  TCP: {}", tcp_addr);
     println!("  UDP: {}", udp_addr);
@@ -104,25 +104,29 @@ fn test_comprehensive_client_stress() {
                 let mut iteration = 0;
                 while start.elapsed() < test_duration {
                     iteration += 1;
-                    
+
                     match pool.get_tcp() {
                         Ok(conn) => {
                             if let Some(mut stream) = conn.tcp_conn() {
                                 // 设置非阻塞模式以避免卡住
                                 let _ = stream.set_nonblocking(true);
-                                
+
                                 // 发送数据
                                 let data = format!("TCP请求#{}-{}", i, iteration);
                                 let data_bytes = data.as_bytes();
-                                
+
                                 if stream.write_all(data_bytes).is_ok() {
-                                    bytes_sent_clone.fetch_add(data_bytes.len() as u64, Ordering::Relaxed);
-                                    
+                                    bytes_sent_clone
+                                        .fetch_add(data_bytes.len() as u64, Ordering::Relaxed);
+
                                     // 读取响应（非阻塞模式）
                                     let mut response = vec![0u8; data_bytes.len()];
                                     match stream.read_exact(&mut response) {
                                         Ok(_) => {
-                                            bytes_recv_clone.fetch_add(response.len() as u64, Ordering::Relaxed);
+                                            bytes_recv_clone.fetch_add(
+                                                response.len() as u64,
+                                                Ordering::Relaxed,
+                                            );
                                             tcp_ops.fetch_add(1, Ordering::Relaxed);
                                         }
                                         Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -130,7 +134,8 @@ fn test_comprehensive_client_stress() {
                                             let mut partial = vec![0u8; data_bytes.len()];
                                             match stream.read(&mut partial) {
                                                 Ok(size) if size > 0 => {
-                                                    bytes_recv_clone.fetch_add(size as u64, Ordering::Relaxed);
+                                                    bytes_recv_clone
+                                                        .fetch_add(size as u64, Ordering::Relaxed);
                                                     tcp_ops.fetch_add(1, Ordering::Relaxed);
                                                 }
                                                 _ => {
@@ -178,22 +183,24 @@ fn test_comprehensive_client_stress() {
                 let mut iteration = 0;
                 while start.elapsed() < test_duration {
                     iteration += 1;
-                    
+
                     match pool.get_udp() {
                         Ok(conn) => {
                             if let Some(socket) = conn.udp_conn() {
                                 // 发送数据
                                 let data = format!("UDP请求#{}-{}", i, iteration);
                                 let data_bytes = data.as_bytes();
-                                
+
                                 if socket.send(data_bytes).is_ok() {
-                                    bytes_sent_clone.fetch_add(data_bytes.len() as u64, Ordering::Relaxed);
-                                    
+                                    bytes_sent_clone
+                                        .fetch_add(data_bytes.len() as u64, Ordering::Relaxed);
+
                                     // 接收响应
                                     let mut response = vec![0u8; 8192];
                                     match socket.recv(&mut response) {
                                         Ok(size) => {
-                                            bytes_recv_clone.fetch_add(size as u64, Ordering::Relaxed);
+                                            bytes_recv_clone
+                                                .fetch_add(size as u64, Ordering::Relaxed);
                                             udp_ops.fetch_add(1, Ordering::Relaxed);
                                         }
                                         Err(_) => {
@@ -237,7 +244,7 @@ fn test_comprehensive_client_stress() {
                 let mut iteration = 0;
                 while start.elapsed() < test_duration {
                     iteration += 1;
-                    
+
                     // 交替使用TCP和UDP
                     if iteration % 2 == 0 {
                         // TCP请求
@@ -245,23 +252,28 @@ fn test_comprehensive_client_stress() {
                             if let Some(mut stream) = conn.tcp_conn() {
                                 // 设置非阻塞模式
                                 let _ = stream.set_nonblocking(true);
-                                
+
                                 let data = format!("混合TCP#{}-{}", i, iteration);
                                 let data_bytes = data.as_bytes();
-                                
+
                                 if stream.write_all(data_bytes).is_ok() {
-                                    bytes_sent_clone.fetch_add(data_bytes.len() as u64, Ordering::Relaxed);
+                                    bytes_sent_clone
+                                        .fetch_add(data_bytes.len() as u64, Ordering::Relaxed);
                                     let mut response = vec![0u8; data_bytes.len()];
                                     match stream.read_exact(&mut response) {
                                         Ok(_) => {
-                                            bytes_recv_clone.fetch_add(response.len() as u64, Ordering::Relaxed);
+                                            bytes_recv_clone.fetch_add(
+                                                response.len() as u64,
+                                                Ordering::Relaxed,
+                                            );
                                             tcp_ops.fetch_add(1, Ordering::Relaxed);
                                         }
                                         Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                                             // 非阻塞模式，尝试部分读取
                                             match stream.read(&mut response) {
                                                 Ok(size) if size > 0 => {
-                                                    bytes_recv_clone.fetch_add(size as u64, Ordering::Relaxed);
+                                                    bytes_recv_clone
+                                                        .fetch_add(size as u64, Ordering::Relaxed);
                                                     tcp_ops.fetch_add(1, Ordering::Relaxed);
                                                 }
                                                 _ => {
@@ -289,13 +301,15 @@ fn test_comprehensive_client_stress() {
                             if let Some(socket) = conn.udp_conn() {
                                 let data = format!("混合UDP#{}-{}", i, iteration);
                                 let data_bytes = data.as_bytes();
-                                
+
                                 if socket.send(data_bytes).is_ok() {
-                                    bytes_sent_clone.fetch_add(data_bytes.len() as u64, Ordering::Relaxed);
+                                    bytes_sent_clone
+                                        .fetch_add(data_bytes.len() as u64, Ordering::Relaxed);
                                     let mut response = vec![0u8; 8192];
                                     match socket.recv(&mut response) {
                                         Ok(size) => {
-                                            bytes_recv_clone.fetch_add(size as u64, Ordering::Relaxed);
+                                            bytes_recv_clone
+                                                .fetch_add(size as u64, Ordering::Relaxed);
                                             udp_ops.fetch_add(1, Ordering::Relaxed);
                                         }
                                         Err(_) => {
@@ -331,14 +345,14 @@ fn test_comprehensive_client_stress() {
     let monitor_handle = thread::spawn(move || {
         while monitor_start.elapsed() < test_duration {
             thread::sleep(Duration::from_secs(30));
-            
+
             let elapsed = monitor_start.elapsed();
             let tcp_ops = monitor_tcp_ops.load(Ordering::Relaxed);
             let udp_ops = monitor_udp_ops.load(Ordering::Relaxed);
             let tcp_errs = monitor_tcp_errs.load(Ordering::Relaxed);
             let udp_errs = monitor_udp_errs.load(Ordering::Relaxed);
             let stats = monitor_pool.stats();
-            
+
             println!(
                 "[{:?}] TCP: 操作={}, 错误={} | UDP: 操作={}, 错误={} | 连接: 当前={}, 创建={}, 复用={}",
                 elapsed,
@@ -360,7 +374,11 @@ fn test_comprehensive_client_stress() {
     println!();
 
     // 等待所有线程完成
-    for handle in tcp_handles.into_iter().chain(udp_handles).chain(mixed_handles) {
+    for handle in tcp_handles
+        .into_iter()
+        .chain(udp_handles)
+        .chain(mixed_handles)
+    {
         handle.join().unwrap();
     }
     monitor_handle.join().unwrap();
@@ -384,34 +402,50 @@ fn test_comprehensive_client_stress() {
     println!("  TCP统计:");
     println!("    操作数: {}", total_tcp_ops);
     println!("    错误数: {}", total_tcp_errs);
-    println!("    成功率: {:.2}%", 
+    println!(
+        "    成功率: {:.2}%",
         if total_tcp_ops + total_tcp_errs > 0 {
             (total_tcp_ops as f64 / (total_tcp_ops + total_tcp_errs) as f64) * 100.0
         } else {
             0.0
-        });
+        }
+    );
     println!();
     println!("  UDP统计:");
     println!("    操作数: {}", total_udp_ops);
     println!("    错误数: {}", total_udp_errs);
-    println!("    成功率: {:.2}%",
+    println!(
+        "    成功率: {:.2}%",
         if total_udp_ops + total_udp_errs > 0 {
             (total_udp_ops as f64 / (total_udp_ops + total_udp_errs) as f64) * 100.0
         } else {
             0.0
-        });
+        }
+    );
     println!();
     println!("  数据传输:");
-    println!("    发送: {:.2} MB", total_bytes_sent as f64 / 1024.0 / 1024.0);
-    println!("    接收: {:.2} MB", total_bytes_recv as f64 / 1024.0 / 1024.0);
-    println!("    总流量: {:.2} MB", (total_bytes_sent + total_bytes_recv) as f64 / 1024.0 / 1024.0);
+    println!(
+        "    发送: {:.2} MB",
+        total_bytes_sent as f64 / 1024.0 / 1024.0
+    );
+    println!(
+        "    接收: {:.2} MB",
+        total_bytes_recv as f64 / 1024.0 / 1024.0
+    );
+    println!(
+        "    总流量: {:.2} MB",
+        (total_bytes_sent + total_bytes_recv) as f64 / 1024.0 / 1024.0
+    );
     println!();
     println!("  连接池统计:");
     println!("    当前连接: {}", final_stats.current_connections);
     println!("    创建连接: {}", final_stats.total_connections_created);
     println!("    关闭连接: {}", final_stats.total_connections_closed);
     println!("    连接复用: {}", final_stats.total_connections_reused);
-    println!("    复用率: {:.2}%", final_stats.average_reuse_count * 100.0);
+    println!(
+        "    复用率: {:.2}%",
+        final_stats.average_reuse_count * 100.0
+    );
     println!("    TCP连接: {}", final_stats.current_tcp_connections);
     println!("    UDP连接: {}", final_stats.current_udp_connections);
     println!();
@@ -422,8 +456,10 @@ fn test_comprehensive_client_stress() {
 
     // 验证结果
     assert!(total_tcp_ops > 0 || total_udp_ops > 0, "应该有成功的操作");
-    assert!(final_stats.current_connections <= 200, "连接数不应超过最大值");
+    assert!(
+        final_stats.current_connections <= 200,
+        "连接数不应超过最大值"
+    );
 
     println!("✅ 全面客户端压力测试通过！");
 }
-

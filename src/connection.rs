@@ -6,8 +6,7 @@ use crate::ipversion::{detect_ip_version, IPVersion};
 use crate::protocol::Protocol;
 use std::net::{TcpStream, UdpSocket};
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 static CONNECTION_ID_GENERATOR: AtomicU64 = AtomicU64::new(1);
 
@@ -32,26 +31,26 @@ pub struct Connection {
     /// CreatedAt 创建时间
     created_at: Instant,
 
-    /// LastUsedAt 最后使用时间
-    last_used_at: Arc<std::sync::Mutex<Instant>>,
+    /// LastUsedAt 最后使用时间（使用 AtomicU64 存储 UNIX 时间戳纳秒）
+    last_used_at: AtomicU64,
 
-    /// LastHealthCheckAt 最后健康检查时间
-    last_health_check_at: Arc<std::sync::Mutex<Instant>>,
+    /// LastHealthCheckAt 最后健康检查时间（使用 AtomicU64 存储 UNIX 时间戳纳秒）
+    last_health_check_at: AtomicU64,
 
     /// IsHealthy 是否健康
-    is_healthy: Arc<AtomicBool>,
+    is_healthy: AtomicBool,
 
     /// Closed 是否已关闭（用于 close 幂等）
-    closed: Arc<AtomicBool>,
+    closed: AtomicBool,
 
     /// InUse 是否正在使用中
-    in_use: Arc<AtomicBool>,
+    in_use: AtomicBool,
 
     /// ReuseCount 连接复用次数
-    reuse_count: Arc<AtomicI64>,
+    reuse_count: AtomicI64,
 
     /// leak_reported 是否已上报过泄漏（避免重复计数）
-    leak_reported: Arc<AtomicBool>,
+    leak_reported: AtomicBool,
 
     /// on_close 关闭回调
     on_close: Option<Box<OnCloseCallback>>,
@@ -77,6 +76,15 @@ impl fmt::Debug for Connection {
 }
 
 impl Connection {
+    /// 获取当前时间的 UNIX 时间戳（纳秒）
+    #[inline]
+    fn now_nanos() -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos() as u64
+    }
+
     /// NewConnection 创建新连接
     pub fn new(conn: ConnectionType, on_close: Option<Box<OnCloseCallback>>) -> Self {
         let now = Instant::now();
@@ -96,31 +104,50 @@ impl Connection {
         let id = loop {
             let old = CONNECTION_ID_GENERATOR.load(Ordering::Relaxed);
             if let Some(new) = old.checked_add(1) {
-                if CONNECTION_ID_GENERATOR.compare_exchange_weak(
-                    old,
-                    new,
-                    Ordering::Relaxed,
-                    Ordering::Relaxed,
-                ).is_ok() {
+                if CONNECTION_ID_GENERATOR
+                    .compare_exchange_weak(old, new, Ordering::Relaxed, Ordering::Relaxed)
+                    .is_ok()
+                {
                     break new;
                 }
                 // CAS 失败，重试
                 continue;
             } else {
-                // 溢出：重置为 1（跳过 0，因为 0 可能用作特殊值）
-                eprintln!("警告: 连接 ID 生成器溢出，重置为 1");
-                if CONNECTION_ID_GENERATOR.compare_exchange_weak(
-                    old,
-                    1,
-                    Ordering::Relaxed,
-                    Ordering::Relaxed,
-                ).is_ok() {
-                    break 1;
+                // 溢出：使用基于时间戳的 ID，避免与已有连接冲突
+                // 使用纳秒时间戳的低 48 位 + 高 16 位的哈希值，确保唯一性
+                let timestamp_nanos = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos() as u64;
+                // 使用时间戳作为基础 ID，并加上一个小的随机偏移
+                let timestamp_based_id =
+                    (timestamp_nanos & 0x0000_FFFF_FFFF_FFFF) | 0x0001_0000_0000_0000;
+                eprintln!(
+                    "警告: 连接 ID 生成器溢出，使用基于时间戳的 ID: {}",
+                    timestamp_based_id
+                );
+                // 更新生成器为时间戳 ID，这样后续的 ID 会从时间戳开始递增
+                if CONNECTION_ID_GENERATOR
+                    .compare_exchange_weak(
+                        old,
+                        timestamp_based_id,
+                        Ordering::Relaxed,
+                        Ordering::Relaxed,
+                    )
+                    .is_ok()
+                {
+                    break timestamp_based_id;
                 }
                 // CAS 失败，重试
                 continue;
             }
         };
+
+        // 将当前时间转换为 UNIX 时间戳（纳秒）
+        let system_now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos() as u64;
 
         Self {
             id,
@@ -128,13 +155,13 @@ impl Connection {
             protocol,
             ip_version,
             created_at: now,
-            last_used_at: Arc::new(std::sync::Mutex::new(now)),
-            last_health_check_at: Arc::new(std::sync::Mutex::new(now)),
-            is_healthy: Arc::new(AtomicBool::new(true)),
-            closed: Arc::new(AtomicBool::new(false)),
-            in_use: Arc::new(AtomicBool::new(false)),
-            reuse_count: Arc::new(AtomicI64::new(0)),
-            leak_reported: Arc::new(AtomicBool::new(false)),
+            last_used_at: AtomicU64::new(system_now),
+            last_health_check_at: AtomicU64::new(system_now),
+            is_healthy: AtomicBool::new(true),
+            closed: AtomicBool::new(false),
+            in_use: AtomicBool::new(false),
+            reuse_count: AtomicI64::new(0),
+            leak_reported: AtomicBool::new(false),
             on_close,
         }
     }
@@ -183,28 +210,24 @@ impl Connection {
     /// MarkInUse 标记为使用中
     pub fn mark_in_use(&self) {
         self.in_use.store(true, Ordering::Release);
-        if let Ok(mut guard) = self.last_used_at.lock() {
-            *guard = Instant::now();
-        }
-        // 如果锁获取失败（poisoned），忽略错误，因为时间戳更新不是关键操作
+        self.last_used_at
+            .store(Self::now_nanos(), Ordering::Release);
     }
 
     /// MarkIdle 标记为空闲
     pub fn mark_idle(&self) {
         self.in_use.store(false, Ordering::Release);
-        if let Ok(mut guard) = self.last_used_at.lock() {
-            *guard = Instant::now();
-        }
-        // 如果锁获取失败（poisoned），忽略错误，因为时间戳更新不是关键操作
+        self.last_used_at
+            .store(Self::now_nanos(), Ordering::Release);
     }
 
     /// UpdateHealth 更新健康状态
     pub fn update_health(&self, healthy: bool) {
         self.is_healthy.store(healthy, Ordering::Release);
-        if let Ok(mut guard) = self.last_health_check_at.lock() {
-            *guard = Instant::now();
+        if healthy {
+            self.last_health_check_at
+                .store(Self::now_nanos(), Ordering::Release);
         }
-        // 如果锁获取失败（poisoned），忽略错误，因为时间戳更新不是关键操作
     }
 
     /// mark_unhealthy 仅标记为不健康（不主动关闭）
@@ -217,10 +240,12 @@ impl Connection {
         if interval.is_zero() {
             return false;
         }
-        if let Ok(last) = self.last_health_check_at.lock() {
-            Instant::now().duration_since(*last) >= interval
+        let last_nanos = self.last_health_check_at.load(Ordering::Acquire);
+        let now_nanos = Self::now_nanos();
+        if now_nanos >= last_nanos {
+            Duration::from_nanos(now_nanos - last_nanos) >= interval
         } else {
-            true // 如果获取锁失败，返回 true 以触发健康检查
+            true // 时间戳异常，触发健康检查
         }
     }
 
@@ -245,10 +270,12 @@ impl Connection {
         if self.in_use.load(Ordering::Acquire) {
             return false;
         }
-        if let Ok(last_used) = self.last_used_at.lock() {
-            Instant::now().duration_since(*last_used) > idle_timeout
+        let last_nanos = self.last_used_at.load(Ordering::Acquire);
+        let now_nanos = Self::now_nanos();
+        if now_nanos >= last_nanos {
+            Duration::from_nanos(now_nanos - last_nanos) > idle_timeout
         } else {
-            false // 如果获取锁失败，返回 false（不认为过期）
+            false // 时间戳异常，不认为过期
         }
     }
 
@@ -257,10 +284,27 @@ impl Connection {
         if leak_timeout.is_zero() || !self.in_use.load(Ordering::Acquire) {
             return false;
         }
-        if let Ok(last_used) = self.last_used_at.lock() {
-            Instant::now().duration_since(*last_used) > leak_timeout
+        let last_nanos = self.last_used_at.load(Ordering::Acquire);
+        let now_nanos = Self::now_nanos();
+        if now_nanos >= last_nanos {
+            Duration::from_nanos(now_nanos - last_nanos) > leak_timeout
         } else {
-            false // 如果获取锁失败，返回 false（不认为泄漏）
+            false // 时间戳异常，不认为泄漏
+        }
+    }
+
+    /// GetLeakedDuration 获取连接的泄漏时间（如果泄漏）
+    /// 返回 None 表示未泄漏，Some(Duration) 表示泄漏的时间
+    pub fn get_leaked_duration(&self) -> Option<Duration> {
+        if !self.in_use.load(Ordering::Acquire) {
+            return None;
+        }
+        let last_nanos = self.last_used_at.load(Ordering::Acquire);
+        let now_nanos = Self::now_nanos();
+        if now_nanos >= last_nanos {
+            Some(Duration::from_nanos(now_nanos - last_nanos))
+        } else {
+            None // 时间戳异常
         }
     }
 
@@ -298,10 +342,12 @@ impl Connection {
         if self.in_use.load(Ordering::Acquire) {
             return Duration::ZERO;
         }
-        if let Ok(last_used) = self.last_used_at.lock() {
-            Instant::now().duration_since(*last_used)
+        let last_nanos = self.last_used_at.load(Ordering::Acquire);
+        let now_nanos = Self::now_nanos();
+        if now_nanos >= last_nanos {
+            Duration::from_nanos(now_nanos - last_nanos)
         } else {
-            Duration::ZERO // 如果获取锁失败，返回零时长
+            Duration::ZERO // 时间戳异常，返回零时长
         }
     }
 

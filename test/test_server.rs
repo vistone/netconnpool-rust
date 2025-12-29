@@ -76,7 +76,7 @@ impl TestServer {
                         let stream_clone = stream.try_clone().unwrap();
                         let tcp_requests_clone = tcp_requests.clone();
                         let stop_clone = stop_tcp.clone();
-                        
+
                         thread::spawn(move || {
                             Self::handle_tcp_client(stream_clone, tcp_requests_clone, stop_clone);
                         });
@@ -98,7 +98,7 @@ impl TestServer {
                 match udp_socket.recv_from(&mut buf) {
                     Ok((size, addr)) => {
                         udp_requests.fetch_add(1, Ordering::Relaxed);
-                        
+
                         // 回显数据
                         let data = &buf[..size];
                         let _ = udp_socket.send_to(data, addr);
@@ -117,19 +117,15 @@ impl TestServer {
         let _ = (tcp_handle, udp_handle);
     }
 
-    fn handle_tcp_client(
-        mut stream: TcpStream,
-        requests: Arc<AtomicU64>,
-        stop: Arc<AtomicBool>,
-    ) {
+    fn handle_tcp_client(mut stream: TcpStream, requests: Arc<AtomicU64>, stop: Arc<AtomicBool>) {
         let mut buf = [0u8; 8192];
-        
+
         while !stop.load(Ordering::Relaxed) {
             match stream.read(&mut buf) {
                 Ok(0) => break, // 连接关闭
                 Ok(size) => {
                     requests.fetch_add(1, Ordering::Relaxed);
-                    
+
                     // 回显数据
                     if let Err(_) = stream.write_all(&buf[..size]) {
                         break;
@@ -154,4 +150,3 @@ impl Drop for TestServer {
         self.stop();
     }
 }
-

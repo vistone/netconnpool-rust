@@ -142,17 +142,36 @@ struct StatsInternal {
 
 impl StatsCollector {
     /// 安全地增加 i64 原子计数器，检测溢出
-    /// 
+    ///
     /// 使用 CAS 循环确保原子性更新，避免在高并发下丢失更新
+    /// 对于关键统计（如 current_connections），使用 Acquire/Release 内存顺序
     #[inline]
     fn safe_increment_i64(atomic: &AtomicI64, delta: i64, name: &str) {
+        // 判断是否为关键统计，需要更强的内存顺序
+        let is_critical = name.contains("current_connections")
+            || name.contains("current_active")
+            || name.contains("current_idle");
+        let load_ordering = if is_critical {
+            Ordering::Acquire
+        } else {
+            Ordering::Relaxed
+        };
+        let store_ordering = if is_critical {
+            Ordering::Release
+        } else {
+            Ordering::Relaxed
+        };
+
         loop {
-            let old = atomic.load(Ordering::Relaxed);
+            let old = atomic.load(load_ordering);
             let new = match old.checked_add(delta) {
                 Some(v) => v,
                 None => {
                     // 溢出检测：记录警告但不 panic
-                    eprintln!("警告: 统计计数器 {} 溢出 (当前值: {}, 增量: {})", name, old, delta);
+                    eprintln!(
+                        "警告: 统计计数器 {} 溢出 (当前值: {}, 增量: {})",
+                        name, old, delta
+                    );
                     // 对于累计计数器，可以选择重置为 0 或保持最大值
                     // 这里选择保持最大值，避免统计突然变为负数
                     if delta > 0 {
@@ -164,34 +183,53 @@ impl StatsCollector {
             };
 
             // 使用 CAS 确保原子性更新
-            match atomic.compare_exchange_weak(old, new, Ordering::Relaxed, Ordering::Relaxed) {
-                Ok(_) => break,      // 成功，退出循环
-                Err(_) => continue,  // 失败，重试
+            match atomic.compare_exchange_weak(old, new, store_ordering, load_ordering) {
+                Ok(_) => break,     // 成功，退出循环
+                Err(_) => continue, // 失败，重试
             }
         }
     }
 
     /// 安全地增加 u64 原子计数器，检测溢出
-    /// 
+    ///
     /// 使用 CAS 循环确保原子性更新，避免在高并发下丢失更新
+    /// 对于关键统计，使用 Acquire/Release 内存顺序
     #[inline]
     fn safe_increment_u64(atomic: &AtomicU64, delta: u64, name: &str) {
+        // 判断是否为关键统计，需要更强的内存顺序
+        let is_critical = name.contains("current_connections")
+            || name.contains("current_active")
+            || name.contains("current_idle");
+        let load_ordering = if is_critical {
+            Ordering::Acquire
+        } else {
+            Ordering::Relaxed
+        };
+        let store_ordering = if is_critical {
+            Ordering::Release
+        } else {
+            Ordering::Relaxed
+        };
+
         loop {
-            let old = atomic.load(Ordering::Relaxed);
+            let old = atomic.load(load_ordering);
             let new = match old.checked_add(delta) {
                 Some(v) => v,
                 None => {
                     // 溢出检测：记录警告但不 panic
-                    eprintln!("警告: 统计计数器 {} 溢出 (当前值: {}, 增量: {})", name, old, delta);
+                    eprintln!(
+                        "警告: 统计计数器 {} 溢出 (当前值: {}, 增量: {})",
+                        name, old, delta
+                    );
                     // 保持最大值
                     u64::MAX
                 }
             };
 
             // 使用 CAS 确保原子性更新
-            match atomic.compare_exchange_weak(old, new, Ordering::Relaxed, Ordering::Relaxed) {
-                Ok(_) => break,      // 成功，退出循环
-                Err(_) => continue,  // 失败，重试
+            match atomic.compare_exchange_weak(old, new, store_ordering, load_ordering) {
+                Ok(_) => break,     // 成功，退出循环
+                Err(_) => continue, // 失败，重试
             }
         }
     }
@@ -237,11 +275,7 @@ impl StatsCollector {
             1,
             "total_connections_created",
         );
-        Self::safe_increment_i64(
-            &self.stats.current_connections,
-            1,
-            "current_connections",
-        );
+        Self::safe_increment_i64(&self.stats.current_connections, 1, "current_connections");
         self.update_time();
     }
 
@@ -252,11 +286,7 @@ impl StatsCollector {
             1,
             "total_connections_closed",
         );
-        Self::safe_increment_i64(
-            &self.stats.current_connections,
-            -1,
-            "current_connections",
-        );
+        Self::safe_increment_i64(&self.stats.current_connections, -1, "current_connections");
         self.update_time();
     }
 
@@ -282,11 +312,7 @@ impl StatsCollector {
 
     /// IncrementTotalGetRequests 增加获取请求计数
     pub fn increment_total_get_requests(&self) {
-        Self::safe_increment_i64(
-            &self.stats.total_get_requests,
-            1,
-            "total_get_requests",
-        );
+        Self::safe_increment_i64(&self.stats.total_get_requests, 1, "total_get_requests");
         self.update_time();
     }
 
@@ -340,21 +366,13 @@ impl StatsCollector {
 
     /// IncrementConnectionErrors 增加连接错误计数
     pub fn increment_connection_errors(&self) {
-        Self::safe_increment_i64(
-            &self.stats.connection_errors,
-            1,
-            "connection_errors",
-        );
+        Self::safe_increment_i64(&self.stats.connection_errors, 1, "connection_errors");
         self.update_time();
     }
 
     /// IncrementLeakedConnections 增加泄漏连接计数
     pub fn increment_leaked_connections(&self) {
-        Self::safe_increment_i64(
-            &self.stats.leaked_connections,
-            1,
-            "leaked_connections",
-        );
+        Self::safe_increment_i64(&self.stats.leaked_connections, 1, "leaked_connections");
         self.update_time();
     }
 
@@ -404,6 +422,18 @@ impl StatsCollector {
 
     /// GetStats 获取当前统计信息快照
     pub fn get_stats(&self) -> Stats {
+        // 动态计算平均值，避免在快速路径上计算
+        let total_gets = self.stats.successful_gets.load(Ordering::Relaxed);
+        let total_time = self.stats.total_get_time.load(Ordering::Relaxed);
+        let avg_time = if total_gets > 0 {
+            total_time / total_gets as u64
+        } else {
+            0
+        };
+        self.stats
+            .average_get_time
+            .store(avg_time, Ordering::Relaxed);
+
         let total_created = self.stats.total_connections_created.load(Ordering::Relaxed);
         let total_reused = self.stats.total_connections_reused.load(Ordering::Relaxed);
         let avg_reuse = if total_created > 0 {
@@ -456,11 +486,14 @@ impl StatsCollector {
                 self.stats.average_get_time.load(Ordering::Relaxed),
             ),
             total_get_time: Duration::from_nanos(self.stats.total_get_time.load(Ordering::Relaxed)),
-            last_update_time: self
-                .last_update_time
-                .read()
-                .map(|guard| *guard)
-                .unwrap_or_else(|_| Instant::now()),
+            last_update_time: {
+                // 在读取时更新 last_update_time，减少锁竞争
+                let now = Instant::now();
+                if let Ok(mut last_time) = self.last_update_time.write() {
+                    *last_time = now;
+                }
+                now
+            },
         }
     }
 
@@ -554,17 +587,10 @@ impl StatsCollector {
         self.update_time();
     }
 
+    #[inline]
     fn update_time(&self) {
-        // 使用 try_write 避免在高并发下阻塞
-        // 如果无法获取写锁，说明其他线程正在更新，可以跳过本次更新
-        if let Ok(mut last_time) = self.last_update_time.try_write() {
-            let now = Instant::now();
-            // 减少时间更新频率，每100ms更新一次
-            if now.duration_since(*last_time) >= Duration::from_millis(100) {
-                *last_time = now;
-            }
-        }
-        // 如果无法获取锁，说明其他线程正在更新，跳过本次更新是安全的
+        // 优化：不再需要频繁更新，只在 get_stats 时更新
+        // 保留空方法以保持 API 兼容性
     }
 }
 

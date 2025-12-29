@@ -1,6 +1,6 @@
 [package]
 name = "netconnpool"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2021"
 authors = ["vistone"]
 description = "一个功能全面、高性能的 Rust 语言网络连接池管理库"
