@@ -5,6 +5,27 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.1] - 2025-01-XX
+
+### 修复
+- 修复所有安全漏洞（panic风险、整数溢出、资源泄漏）
+- 优化后台线程退出机制，使用可中断的sleep
+- 修复统计功能在高并发下的不准确问题
+- 完善错误处理，替换所有 `unwrap()` 调用
+
+### 测试
+- 新增模糊测试套件（fuzzing_client_test, quick_fuzzing_test）
+- 新增客户端-服务器端到端测试（comprehensive_client_test）
+- 新增统计功能测试（stats_utilization_test）
+- 新增极端压力测试（extreme_stress_test, real_world_stress_test）
+
+### 文档
+- 整理docs目录，合并重复文档
+- 更新所有文档以反映实际代码结构
+- 完善测试指南和安全审计报告
+
+---
+
 ## [1.0.0] - 2025-12-13
 
 ### 新增

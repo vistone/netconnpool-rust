@@ -74,6 +74,14 @@ cargo test --lib
 cargo test --test integration_test -- --ignored
 ```
 
+### 2.1 测试服务器
+
+**位置**: `test/test_server.rs`
+
+**功能**: 提供 TCP/UDP 回显服务器，用于客户端-服务器端到端测试
+
+**使用**: 在客户端测试中自动启动，无需单独运行
+
 ### 3. 压力测试
 
 #### 3.1 快速模糊测试
@@ -164,7 +172,10 @@ cargo test --test stats_utilization_test test_stats_utilization -- --ignored --n
 
 ### 6. 性能测试
 
-**位置**: `test/performance_test.rs`
+**位置**: 
+- `test/performance_test.rs`: 性能测试
+- `test/benchmark_test.rs`: 性能基准测试
+- `test/performance_report.rs`: 性能报告生成
 
 **测试指标**:
 - 获取/归还操作吞吐量
@@ -175,6 +186,20 @@ cargo test --test stats_utilization_test test_stats_utilization -- --ignored --n
 **运行**:
 ```bash
 cargo test --test performance_test -- --ignored --nocapture
+cargo test --test benchmark_test -- --ignored --nocapture
+cargo test --test performance_report -- --ignored --nocapture
+```
+
+### 7. 其他压力测试
+
+**位置**:
+- `test/extreme_stress_test.rs`: 极端压力测试
+- `test/real_world_stress_test.rs`: 真实场景压力测试
+
+**运行**:
+```bash
+cargo test --test extreme_stress_test -- --ignored --nocapture
+cargo test --test real_world_stress_test -- --ignored --nocapture
 ```
 
 ---

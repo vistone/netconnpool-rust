@@ -23,14 +23,14 @@
 
 ```toml
 [dependencies]
-netconnpool = "1.0.0"
+netconnpool = "1.0.1"
 ```
 
 或者从GitHub直接使用：
 
 ```toml
 [dependencies]
-netconnpool = { git = "https://github.com/vistone/netconnpool", tag = "v1.0.0" }
+netconnpool = { git = "https://github.com/vistone/netconnpool-rust", tag = "v1.0.1" }
 ```
 
 ## 快速开始
@@ -170,28 +170,31 @@ netconnpool-rust/
 │   ├── config.rs          # 配置结构和验证
 │   ├── connection.rs      # 连接封装和生命周期管理
 │   ├── errors.rs          # 错误定义
-│   ├── health.rs          # 健康检查管理器
 │   ├── ipversion.rs       # IP 版本检测
-│   ├── leak.rs           # 连接泄露检测器
 │   ├── mode.rs           # 连接池模式定义
-│   ├── pool.rs           # 核心连接池实现
+│   ├── pool.rs           # 核心连接池实现（包含健康检查和泄漏检测）
 │   ├── protocol.rs       # 协议类型检测
 │   ├── stats.rs          # 统计信息收集器
 │   └── udp_utils.rs      # UDP 工具函数
 ├── test/                  # 测试文件（详见 test/README.md）
-│   ├── 单元测试/         # pool_test.rs, mode_test.rs 等
-│   ├── 集成测试/         # integration_test.rs
-│   ├── 压力测试/         # stress_test.rs
-│   ├── 性能测试/         # benchmark_test.rs, performance_test.rs
-│   └── 测试脚本/         # run_*.sh
+│   ├── 单元测试/         # pool_test.rs, mode_test.rs, protocol_test.rs, ipversion_test.rs, stats_test.rs
+│   ├── 集成测试/         # integration_test.rs, test_server.rs
+│   ├── 压力测试/         # stress_test.rs, comprehensive_stress_test.rs, extreme_stress_test.rs, real_world_stress_test.rs
+│   ├── 模糊测试/         # fuzzing_client_test.rs, quick_fuzzing_test.rs
+│   ├── 性能测试/         # benchmark_test.rs, performance_test.rs, performance_report.rs
+│   ├── 统计模块测试/     # stats_stress_test.rs, stats_race_test.rs, stats_utilization_test.rs, idle_counts_cas_test.rs
+│   ├── 客户端-服务器测试/ # comprehensive_client_test.rs
+│   └── 测试脚本/         # run_*.sh, check_test_status.sh, monitor_stress_test.sh
 ├── examples/              # 示例代码
 │   ├── basic_example.rs   # 基本使用示例
 │   ├── client_stress.rs  # 客户端压力测试示例
 │   └── server_example.rs # 服务器端示例
-├── docs/                  # 文档（详见 docs/INDEX.md）
-│   ├── INDEX.md          # 文档索引
+├── docs/                  # 文档（详见 docs/README.md）
+│   ├── README.md         # 文档导航
 │   ├── STRUCTURE.md      # 项目结构说明
-│   ├── TEST_REPORT.md    # 测试报告
+│   ├── TEST_GUIDE.md     # 测试指南
+│   ├── SECURITY.md       # 安全审计报告
+│   ├── ANALYSIS.md       # 项目分析与改进建议
 │   └── ...              # 其他文档
 └── Cargo.toml            # 项目配置
 ```
@@ -200,7 +203,7 @@ netconnpool-rust/
 
 ## 版本
 
-当前版本：**1.0.0**
+当前版本：**1.0.1**
 
 ## 许可证
 
@@ -216,11 +219,13 @@ BSD-3-Clause License
 
 ## 文档
 
-- **[文档索引](docs/INDEX.md)** - 所有文档的索引和导航
+- **[文档导航](docs/README.md)** - 所有文档的索引和导航
 - **[项目结构](docs/STRUCTURE.md)** - 详细的代码组织结构
 - **[变更日志](docs/CHANGELOG.md)** - 版本变更历史
-- **[测试报告](docs/TEST_REPORT.md)** - 全面测试结果
-- **[测试指南](test/README.md)** - 如何运行和编写测试
+- **[测试指南](docs/TEST_GUIDE.md)** - 完整的测试指南
+- **[安全审计](docs/SECURITY.md)** - 安全审计报告
+- **[项目分析](docs/ANALYSIS.md)** - 项目分析与改进建议
+- **[测试说明](test/README.md)** - 如何运行和编写测试
 
 ## 更新日志
 
