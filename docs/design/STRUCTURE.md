@@ -2,7 +2,7 @@
 
 ```
 netconnpool-rust/
-├── src/                           # 源代码目录
+├── src/                           # 源代码目录（9个模块文件）
 │   ├── lib.rs                    # 库入口，导出所有公共 API
 │   ├── config.rs                 # 配置结构和验证
 │   ├── connection.rs             # 连接封装和生命周期管理
@@ -69,14 +69,19 @@ netconnpool-rust/
 │   └── server_example.rs         # 服务器端示例
 │
 ├── docs/                          # 文档目录
-│   ├── README.md                 # 文档导航（本目录）
-│   ├── STRUCTURE.md               # 项目结构说明（本文件）
+│   ├── README.md                 # 文档导航
 │   ├── CHANGELOG.md               # 变更日志
 │   ├── RELEASE_NOTES.md           # 版本发布说明
-│   ├── TEST_GUIDE.md             # 测试指南
-│   ├── SECURITY.md                # 安全审计报告
-│   ├── ANALYSIS.md                # 项目分析与改进建议
-│   └── LOCK_FREE_OPTIMIZATION.md  # 无锁优化文档
+│   ├── GITHUB_TOPICS.md           # GitHub 仓库标签
+│   ├── design/                    # 设计文档
+│   │   ├── STRUCTURE.md           # 项目结构说明（本文件）
+│   │   └── LOCK_FREE_OPTIMIZATION.md  # 无锁优化文档
+│   ├── guides/                    # 指南文档
+│   │   ├── TEST_GUIDE.md          # 测试指南
+│   │   └── MANUAL_UPDATE_GUIDE.md # 手动更新指南
+│   └── reports/                   # 报告文档
+│       ├── SECURITY.md            # 安全审计报告
+│       └── ANALYSIS.md            # 项目分析与改进建议
 │
 ├── Cargo.toml                    # Rust 项目配置文件
 ├── Cargo.lock                    # 依赖锁定文件（自动生成）
@@ -142,7 +147,14 @@ netconnpool-rust/
 包含所有源代码文件，按照功能模块组织。注意：健康检查和泄漏检测功能已集成到 `pool.rs` 中，不再有独立的 `health.rs` 和 `leak.rs` 文件。
 
 ### test/
-包含所有测试文件，所有测试文件都在 `test/` 根目录下，没有子目录。使用 `Cargo.toml` 中的 `[[test]]` 配置来组织不同的测试套件。
+包含所有测试文件，按类型组织在子目录中：
+- **unit/**: 单元测试
+- **integration/**: 集成测试
+- **stress/**: 压力测试和性能测试
+- **fuzzing/**: 模糊测试
+- **scripts/**: 测试脚本
+
+使用 `Cargo.toml` 中的 `[[test]]` 配置来组织不同的测试套件。
 
 ### examples/
 包含各种使用场景的示例代码：
@@ -150,12 +162,19 @@ netconnpool-rust/
 - 客户端和服务器端模式示例
 
 ### docs/
-包含项目文档：
-- README.md: 文档导航和快速开始
-- STRUCTURE.md: 项目结构说明（本文件）
-- TEST_GUIDE.md: 完整的测试指南
-- SECURITY.md: 安全审计报告
-- ANALYSIS.md: 项目分析与改进建议
+包含项目文档，按类型组织：
+- **README.md**: 文档导航和快速开始
+- **CHANGELOG.md**: 变更日志
+- **RELEASE_NOTES.md**: 版本发布说明
+- **design/**: 设计相关文档
+  - STRUCTURE.md: 项目结构说明（本文件）
+  - LOCK_FREE_OPTIMIZATION.md: 无锁队列优化说明
+- **guides/**: 指南文档
+  - TEST_GUIDE.md: 完整的测试指南
+  - MANUAL_UPDATE_GUIDE.md: 手动更新 GitHub 指南
+- **reports/**: 报告文档
+  - SECURITY.md: 安全审计报告
+  - ANALYSIS.md: 项目分析与改进建议
 
 ## 代码组织原则
 
@@ -175,5 +194,5 @@ netconnpool-rust/
 
 ## 版本信息
 
-- **当前版本**: 1.0.1
+- **当前版本**: 1.0.4
 - **最后更新**: 2025-01-XX

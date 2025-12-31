@@ -62,7 +62,7 @@ fn test_comprehensive_client_stress() {
             _ => {
                 // 默认TCP
                 TcpStream::connect(&tcp_addr_clone)
-                    .map(|s| ConnectionType::Tcp(s))
+                    .map(ConnectionType::Tcp)
                     .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
             }
         }
@@ -98,7 +98,6 @@ fn test_comprehensive_client_stress() {
             let tcp_errs = tcp_errors.clone();
             let bytes_sent_clone = bytes_sent.clone();
             let bytes_recv_clone = bytes_received.clone();
-            let start = start;
 
             thread::spawn(move || {
                 let mut iteration = 0;
@@ -177,7 +176,6 @@ fn test_comprehensive_client_stress() {
             let udp_errs = udp_errors.clone();
             let bytes_sent_clone = bytes_sent.clone();
             let bytes_recv_clone = bytes_received.clone();
-            let start = start;
 
             thread::spawn(move || {
                 let mut iteration = 0;
@@ -238,7 +236,6 @@ fn test_comprehensive_client_stress() {
             let udp_errs = udp_errors.clone();
             let bytes_sent_clone = bytes_sent.clone();
             let bytes_recv_clone = bytes_received.clone();
-            let start = start;
 
             thread::spawn(move || {
                 let mut iteration = 0;

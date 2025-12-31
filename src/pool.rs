@@ -850,9 +850,8 @@ impl PoolInner {
 
     fn return_connection(&self, conn: Arc<Connection>) {
         // 归还：从 active -> idle（避免重复扣减 active 统计）
-        let was_in_use = conn.is_in_use();
-        conn.mark_idle();
-        if was_in_use {
+        // 使用 try_mark_idle 原子操作，防止与 reaper 线程强制驱逐产生竞态
+        if conn.try_mark_idle() {
             self.active_count.fetch_sub(1, Ordering::Relaxed);
             if let Some(stats) = &self.stats_collector {
                 stats.increment_current_active_connections(-1);
@@ -920,8 +919,8 @@ impl PoolInner {
 
     fn remove_connection(&self, conn: &Arc<Connection>) -> Result<()> {
         // 如果在关闭/清理过程中强制移除使用中的连接，修正 active 统计
-        if conn.is_in_use() {
-            conn.mark_idle();
+        // 使用 try_mark_idle 原子操作，防止与 return_connection 产生竞态
+        if conn.try_mark_idle() {
             self.active_count.fetch_sub(1, Ordering::Relaxed);
             if let Some(stats) = &self.stats_collector {
                 stats.increment_current_active_connections(-1);
@@ -930,10 +929,14 @@ impl PoolInner {
             // 移除一个连接时，只需要唤醒一个等待的线程
             self.wait_cv.notify_one();
         }
-
-        // 如果它仍在 idle 列表里，先移除（并同步 idle 统计）
-        // 移除连接时，依赖 is_connection_valid_for_borrow 进行延迟清理
-        // 不再需要主动从 idle 队列中移除，避免队列顺序混乱和性能问题
+        // 注意：如果连接在idle队列中，我们不在这里更新idle_counts计数器
+        // 因为SegQueue不支持删除特定元素，连接仍在队列中
+        // 当get_connection pop它时，会检查有效性并调用remove_connection
+        // 但此时连接已经不在all_connections中了，避免重复处理
+        // 这种延迟清理的设计是合理的，因为：
+        // 1. 连接已被标记为关闭，get_connection会跳过它
+        // 2. 连接会从队列中pop出来并正确清理
+        // 3. idle_counts会在pop时正确更新
 
         self.close_connection(conn);
 

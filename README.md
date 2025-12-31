@@ -205,7 +205,7 @@ netconnpool-rust/
 
 ## 版本
 
-当前版本：**1.0.4**（修复子模块问题）
+当前版本：**1.0.4**
 
 ## 许可证
 
@@ -222,13 +222,27 @@ BSD-3-Clause License
 ## 文档
 
 - **[文档导航](docs/README.md)** - 所有文档的索引和导航
-- **[项目结构](docs/STRUCTURE.md)** - 详细的代码组织结构
+- **[贡献指南](CONTRIBUTING.md)** - 开发规范和贡献指南（**必读**）
+- **[项目结构](docs/design/STRUCTURE.md)** - 详细的代码组织结构
 - **[变更日志](docs/CHANGELOG.md)** - 版本变更历史
-- **[测试指南](docs/TEST_GUIDE.md)** - 完整的测试指南
-- **[安全审计](docs/SECURITY.md)** - 安全审计报告
-- **[项目分析](docs/ANALYSIS.md)** - 项目分析与改进建议
+- **[测试指南](docs/guides/TEST_GUIDE.md)** - 完整的测试指南
+- **[安全审计](docs/reports/SECURITY.md)** - 安全审计报告
+- **[项目分析](docs/reports/ANALYSIS.md)** - 项目分析与改进建议
 - **[测试说明](test/README.md)** - 如何运行和编写测试
 
 ## 更新日志
 
 详见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
+
+## 开发规范
+
+**重要：提交代码前请务必阅读 [CONTRIBUTING.md](CONTRIBUTING.md)**
+
+在提交代码到 GitHub 之前，必须运行：
+
+```bash
+# 运行完整检查
+./scripts/check_before_commit.sh
+```
+
+确保所有检查通过后才能提交。

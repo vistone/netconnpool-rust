@@ -127,7 +127,7 @@ impl TestServer {
                     requests.fetch_add(1, Ordering::Relaxed);
 
                     // 回显数据
-                    if let Err(_) = stream.write_all(&buf[..size]) {
+                    if stream.write_all(&buf[..size]).is_err() {
                         break;
                     }
                     stream.flush().ok();

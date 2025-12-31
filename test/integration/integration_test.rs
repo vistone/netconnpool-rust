@@ -147,7 +147,7 @@ fn test_error_recovery() {
         static mut COUNTER: u32 = 0;
         unsafe {
             COUNTER += 1;
-            if COUNTER % 10 == 0 {
+            if COUNTER.is_multiple_of(10) {
                 // 每10次失败一次
                 return Err(Box::new(std::io::Error::new(
                     std::io::ErrorKind::ConnectionRefused,

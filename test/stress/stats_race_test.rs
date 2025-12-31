@@ -138,11 +138,7 @@ fn test_stats_record_get_time_race() {
         let calculated_avg =
             final_stats.total_get_time.as_nanos() / final_stats.successful_gets as u128;
         let reported_avg = final_stats.average_get_time.as_nanos();
-        let diff = if calculated_avg > reported_avg {
-            calculated_avg - reported_avg
-        } else {
-            reported_avg - calculated_avg
-        };
+        let diff = calculated_avg.abs_diff(reported_avg);
 
         // 允许小的误差
         assert!(diff < 1000000, "平均时间计算应该基本正确");

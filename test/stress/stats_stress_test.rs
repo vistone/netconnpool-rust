@@ -343,11 +343,7 @@ fn test_stats_record_get_time_consistency() {
     println!("  预期总时间: {:?}", expected_total_time);
 
     // 允许小的误差
-    let time_diff = if final_stats.total_get_time > expected_total_time {
-        final_stats.total_get_time - expected_total_time
-    } else {
-        expected_total_time - final_stats.total_get_time
-    };
+    let time_diff = final_stats.total_get_time.abs_diff(expected_total_time);
 
     assert!(time_diff < Duration::from_secs(1), "时间记录应该基本一致");
     assert_eq!(

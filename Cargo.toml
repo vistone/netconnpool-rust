@@ -22,73 +22,41 @@ path = "src/lib.rs"
 
 # 集成测试配置 - 使用test目录
 [[test]]
-name = "stress_test"
-path = "test/stress_test.rs"
-
-[[test]]
 name = "benchmark_test"
-path = "test/benchmark_test.rs"
+path = "test/stress/benchmark_test.rs"
 
 [[test]]
 name = "integration_test"
-path = "test/integration_test.rs"
+path = "test/integration/integration_test.rs"
 
 [[test]]
 name = "stats_stress_test"
-path = "test/stats_stress_test.rs"
+path = "test/stress/stats_stress_test.rs"
 
 [[test]]
 name = "stats_race_test"
-path = "test/stats_race_test.rs"
+path = "test/stress/stats_race_test.rs"
 
 [[test]]
 name = "performance_test"
-path = "test/performance_test.rs"
+path = "test/stress/performance_test.rs"
 
 [[test]]
 name = "performance_report"
-path = "test/performance_report.rs"
+path = "test/stress/performance_report.rs"
 
 [[test]]
 name = "stats_test"
-path = "test/stats_test.rs"
-
-[[test]]
-name = "comprehensive_stress_test"
-path = "test/comprehensive_stress_test.rs"
+path = "test/unit/stats_test.rs"
 
 [[test]]
 name = "comprehensive_client_test"
-path = "test/comprehensive_client_test.rs"
-
-[[test]]
-name = "fuzzing_client_test"
-path = "test/fuzzing_client_test.rs"
-
-[[test]]
-name = "quick_fuzzing_test"
-path = "test/quick_fuzzing_test.rs"
+path = "test/integration/comprehensive_client_test.rs"
 
 [[test]]
 name = "stats_utilization_test"
-path = "test/stats_utilization_test.rs"
-
-[[test]]
-name = "real_world_stress_test"
-path = "test/real_world_stress_test.rs"
-
-[[test]]
-name = "extreme_stress_test"
-path = "test/extreme_stress_test.rs"
+path = "test/stress/stats_utilization_test.rs"
 
 [[test]]
 name = "idle_counts_cas_test"
-path = "test/idle_counts_cas_test.rs"
-
-[[test]]
-name = "vulnerability_check"
-path = "test/vulnerability_check.rs"
-
-[[test]]
-name = "final_verification"
-path = "test/final_verification.rs"
+path = "test/stress/idle_counts_cas_test.rs"

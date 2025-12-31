@@ -53,6 +53,9 @@ pub struct Connection {
     leak_reported: AtomicBool,
 
     /// on_close 关闭回调
+    ///
+    /// 如果提供了此回调，连接池在关闭连接时将调用此函数，并**跳过默认的关闭逻辑**。
+    /// 用户需要负责在回调中正确关闭底层网络连接（例如对于 TCP 调用 shutdown）。
     on_close: Option<Box<OnCloseCallback>>,
 }
 
@@ -77,12 +80,16 @@ impl fmt::Debug for Connection {
 
 impl Connection {
     /// 获取当前时间的 UNIX 时间戳（纳秒）
+    /// 注意：在2262年之后，时间戳会超过u64的最大值，这里使用截断处理
     #[inline]
     fn now_nanos() -> u64 {
+        // 使用 try_into 安全转换，如果溢出则截断到 u64::MAX
+        // 这对于当前日期（2025年）是安全的，时间戳纳秒值约为 1.7e18，远小于 u64::MAX (1.8e19)
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
-            .as_nanos() as u64
+            .as_nanos()
+            .min(u64::MAX as u128) as u64
     }
 
     /// NewConnection 创建新连接
@@ -118,7 +125,8 @@ impl Connection {
                 let timestamp_nanos = SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap_or_default()
-                    .as_nanos() as u64;
+                    .as_nanos()
+                    .min(u64::MAX as u128) as u64;
                 // 使用时间戳作为基础 ID，并加上一个小的随机偏移
                 let timestamp_based_id =
                     (timestamp_nanos & 0x0000_FFFF_FFFF_FFFF) | 0x0001_0000_0000_0000;
@@ -144,10 +152,12 @@ impl Connection {
         };
 
         // 将当前时间转换为 UNIX 时间戳（纳秒）
+        // 使用安全转换，避免溢出（对于当前日期是安全的）
         let system_now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
-            .as_nanos() as u64;
+            .as_nanos()
+            .min(u64::MAX as u128) as u64;
 
         Self {
             id,
@@ -219,6 +229,16 @@ impl Connection {
         self.in_use.store(false, Ordering::Release);
         self.last_used_at
             .store(Self::now_nanos(), Ordering::Release);
+    }
+
+    /// TryMarkIdle 尝试标记为空闲，并返回之前是否为使用中状态（原子操作）
+    pub fn try_mark_idle(&self) -> bool {
+        let was_in_use = self.in_use.swap(false, Ordering::Acquire);
+        if was_in_use {
+            self.last_used_at
+                .store(Self::now_nanos(), Ordering::Release);
+        }
+        was_in_use
     }
 
     /// UpdateHealth 更新健康状态
@@ -309,12 +329,17 @@ impl Connection {
     }
 
     /// Close 关闭连接
+    ///
+    /// 如果配置了 `on_close` 回调，将执行回调并直接返回。
+    /// 否则，将执行默认关闭策略：TCP 执行 shutdown，UDP 依赖 Drop 物理关闭。
     pub fn close(&self) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if self.closed.swap(true, Ordering::AcqRel) {
             return Ok(());
         }
 
         if let Some(on_close) = &self.on_close {
+            // 执行用户自定义关闭逻辑。注意：此时默认关闭逻辑（如 TCP shutdown）将被跳过，
+            // 用户需确保在回调内部处理了连接实体的关闭。
             on_close()?;
             self.is_healthy.store(false, Ordering::Release);
             return Ok(());

@@ -147,33 +147,17 @@ impl StatsCollector {
     /// 对于关键统计（如 current_connections），使用 Acquire/Release 内存顺序
     #[inline]
     fn safe_increment_i64(atomic: &AtomicI64, delta: i64, name: &str) {
-        // 判断是否为关键统计，需要更强的内存顺序
-        let is_critical = name.contains("current_connections")
-            || name.contains("current_active")
-            || name.contains("current_idle");
-        let load_ordering = if is_critical {
-            Ordering::Acquire
-        } else {
-            Ordering::Relaxed
-        };
-        let store_ordering = if is_critical {
-            Ordering::Release
-        } else {
-            Ordering::Relaxed
-        };
-
+        // 对于统计计数器，Relaxed 顺序通常足够且性能最高
+        // 如果以后需要严格的跨线程同步语义，再根据具体字段调整
         loop {
-            let old = atomic.load(load_ordering);
+            let old = atomic.load(Ordering::Relaxed);
             let new = match old.checked_add(delta) {
                 Some(v) => v,
                 None => {
-                    // 溢出检测：记录警告但不 panic
                     eprintln!(
                         "警告: 统计计数器 {} 溢出 (当前值: {}, 增量: {})",
                         name, old, delta
                     );
-                    // 对于累计计数器，可以选择重置为 0 或保持最大值
-                    // 这里选择保持最大值，避免统计突然变为负数
                     if delta > 0 {
                         i64::MAX
                     } else {
@@ -182,54 +166,36 @@ impl StatsCollector {
                 }
             };
 
-            // 使用 CAS 确保原子性更新
-            match atomic.compare_exchange_weak(old, new, store_ordering, load_ordering) {
-                Ok(_) => break,     // 成功，退出循环
-                Err(_) => continue, // 失败，重试
+            if atomic
+                .compare_exchange_weak(old, new, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
+            {
+                break;
             }
         }
     }
 
     /// 安全地增加 u64 原子计数器，检测溢出
-    ///
-    /// 使用 CAS 循环确保原子性更新，避免在高并发下丢失更新
-    /// 对于关键统计，使用 Acquire/Release 内存顺序
     #[inline]
     fn safe_increment_u64(atomic: &AtomicU64, delta: u64, name: &str) {
-        // 判断是否为关键统计，需要更强的内存顺序
-        let is_critical = name.contains("current_connections")
-            || name.contains("current_active")
-            || name.contains("current_idle");
-        let load_ordering = if is_critical {
-            Ordering::Acquire
-        } else {
-            Ordering::Relaxed
-        };
-        let store_ordering = if is_critical {
-            Ordering::Release
-        } else {
-            Ordering::Relaxed
-        };
-
         loop {
-            let old = atomic.load(load_ordering);
+            let old = atomic.load(Ordering::Relaxed);
             let new = match old.checked_add(delta) {
                 Some(v) => v,
                 None => {
-                    // 溢出检测：记录警告但不 panic
                     eprintln!(
                         "警告: 统计计数器 {} 溢出 (当前值: {}, 增量: {})",
                         name, old, delta
                     );
-                    // 保持最大值
                     u64::MAX
                 }
             };
 
-            // 使用 CAS 确保原子性更新
-            match atomic.compare_exchange_weak(old, new, store_ordering, load_ordering) {
-                Ok(_) => break,     // 成功，退出循环
-                Err(_) => continue, // 失败，重试
+            if atomic
+                .compare_exchange_weak(old, new, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
+            {
+                break;
             }
         }
     }
@@ -378,45 +344,9 @@ impl StatsCollector {
 
     /// RecordGetTime 记录获取连接的时间
     pub fn record_get_time(&self, duration: Duration) {
-        let nanos = duration.as_nanos() as u64;
+        // 安全转换，避免溢出（Duration的纳秒值通常不会超过u64::MAX）
+        let nanos = duration.as_nanos().min(u64::MAX as u128) as u64;
         Self::safe_increment_u64(&self.stats.total_get_time, nanos, "total_get_time");
-
-        // 计算平均时间（使用重试机制避免竞争条件，最多重试3次）
-        let max_retries = 3;
-        for retry in 0..max_retries {
-            let total_gets = self.stats.successful_gets.load(Ordering::Acquire);
-            if total_gets > 0 {
-                let total_time = self.stats.total_get_time.load(Ordering::Acquire);
-                // 再次检查，确保值没有变化
-                let total_gets2 = self.stats.successful_gets.load(Ordering::Acquire);
-                if total_gets == total_gets2 {
-                    // 值稳定，可以安全计算平均值
-                    if total_gets2 > 0 {
-                        let avg_time = total_time / total_gets2 as u64;
-                        self.stats
-                            .average_get_time
-                            .store(avg_time, Ordering::Release);
-                    }
-                    break;
-                }
-                // 如果值变化了，且不是最后一次重试，继续重试
-                if retry < max_retries - 1 {
-                    continue;
-                }
-                // 最后一次重试，使用当前值计算
-                if total_gets2 > 0 {
-                    let total_time2 = self.stats.total_get_time.load(Ordering::Acquire);
-                    let avg_time = total_time2 / total_gets2 as u64;
-                    self.stats
-                        .average_get_time
-                        .store(avg_time, Ordering::Release);
-                }
-                break;
-            } else {
-                // total_gets 为 0，不需要计算平均值
-                break;
-            }
-        }
         self.update_time();
     }
 
