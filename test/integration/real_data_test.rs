@@ -16,7 +16,7 @@ use std::time::Duration;
 /// 创建一个真正处理数据的 TCP 回声服务器
 fn create_tcp_echo_server() -> (TcpListener, Arc<AtomicBool>, Arc<AtomicU64>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let _ = listener.set_nonblocking(true);
+    listener.set_nonblocking(true).expect("Failed to set non-blocking mode on TCP listener");
     let stop = Arc::new(AtomicBool::new(false));
     let bytes_processed = Arc::new(AtomicU64::new(0));
 
@@ -73,7 +73,7 @@ fn handle_tcp_client(mut stream: TcpStream, bytes: Arc<AtomicU64>, stop: Arc<Ato
 /// 创建一个真正处理数据的 UDP 回声服务器
 fn create_udp_echo_server() -> (UdpSocket, Arc<AtomicBool>, Arc<AtomicU64>) {
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
-    let _ = socket.set_nonblocking(true);
+    socket.set_nonblocking(true).expect("Failed to set non-blocking mode on UDP socket");
     let stop = Arc::new(AtomicBool::new(false));
     let bytes_processed = Arc::new(AtomicU64::new(0));
 
@@ -371,10 +371,10 @@ fn test_concurrent_real_data_transmission() {
     assert!(final_success > 0, "应该有成功的数据验证");
     assert!(server_processed > 0, "服务器应该处理了数据");
     
-    // 验证成功率（允许一些失败，因为网络可能有延迟）
+    // 验证成功率（在本地回环测试中应该非常高）
     let success_rate = final_success as f64 / (num_threads * ops_per_thread) as f64 * 100.0;
     println!("  成功率: {:.2}%", success_rate);
-    assert!(success_rate > 80.0, "成功率应该超过 80%，实际: {:.2}%", success_rate);
+    assert!(success_rate > 95.0, "成功率应该超过 95%，实际: {:.2}%", success_rate);
 
     println!("\n✅ 并发真实数据传输测试通过！");
 }
