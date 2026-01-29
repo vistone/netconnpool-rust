@@ -1,6 +1,6 @@
 [package]
 name = "netconnpool"
-version = "1.0.0"
+version = "1.0.4"
 edition = "2021"
 authors = ["vistone"]
 description = "一个功能全面、高性能的 Rust 语言网络连接池管理库"
@@ -22,40 +22,52 @@ path = "src/lib.rs"
 
 # 集成测试配置 - 使用test目录
 [[test]]
-name = "stress_test"
-path = "test/stress_test.rs"
-
-[[test]]
 name = "benchmark_test"
-path = "test/benchmark_test.rs"
+path = "test/stress/benchmark_test.rs"
 
 [[test]]
 name = "integration_test"
-path = "test/integration_test.rs"
+path = "test/integration/integration_test.rs"
 
 [[test]]
 name = "stats_stress_test"
-path = "test/stats_stress_test.rs"
+path = "test/stress/stats_stress_test.rs"
 
 [[test]]
 name = "stats_race_test"
-path = "test/stats_race_test.rs"
+path = "test/stress/stats_race_test.rs"
 
 [[test]]
 name = "performance_test"
-path = "test/performance_test.rs"
+path = "test/stress/performance_test.rs"
 
 [[test]]
 name = "performance_report"
-path = "test/performance_report.rs"
+path = "test/stress/performance_report.rs"
 
 [[test]]
 name = "stats_test"
-path = "test/stats_test.rs"
+path = "test/unit/stats_test.rs"
 
 [[test]]
-name = "real_world_stress_test"
-path = "test/real_world_stress_test.rs"
+name = "comprehensive_client_test"
+path = "test/integration/comprehensive_client_test.rs"
+
+[[test]]
+name = "stats_utilization_test"
+path = "test/stress/stats_utilization_test.rs"
+
+[[test]]
+name = "idle_counts_cas_test"
+path = "test/stress/idle_counts_cas_test.rs"
+
+[[test]]
+name = "core_stress_test"
+path = "test/stress/core_stress_test.rs"
+
+[[test]]
+name = "security_regression_test"
+path = "test/integration/security_regression_test.rs"
 
 [[test]]
 name = "extreme_stress_test"

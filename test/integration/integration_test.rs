@@ -131,10 +131,7 @@ fn test_full_lifecycle() {
         "当前连接数应该不超过最大连接数限制"
     );
     assert!(final_stats.successful_gets > 0, "应该有成功的操作");
-    assert!(
-        final_stats.total_connections_created > 0,
-        "应该创建过连接"
-    );
+    assert!(final_stats.total_connections_created > 0, "应该创建过连接");
 }
 
 #[test]
@@ -150,7 +147,7 @@ fn test_error_recovery() {
         static mut COUNTER: u32 = 0;
         unsafe {
             COUNTER += 1;
-            if COUNTER % 10 == 0 {
+            if COUNTER.is_multiple_of(10) {
                 // 每10次失败一次
                 return Err(Box::new(std::io::Error::new(
                     std::io::ErrorKind::ConnectionRefused,

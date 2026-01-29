@@ -372,7 +372,11 @@ fn test_rapid_acquire_release() {
     println!("  平均复用次数: {:.2}", stats.average_reuse_count);
 
     // 连接复用率应该很高（> 95%）
-    assert!(reuse_rate > 95.0, "连接复用率应该超过95%，实际: {:.2}%", reuse_rate);
+    assert!(
+        reuse_rate > 95.0,
+        "连接复用率应该超过95%，实际: {:.2}%",
+        reuse_rate
+    );
 
     stop.store(true, Ordering::Relaxed);
     let _ = server_handle.join();

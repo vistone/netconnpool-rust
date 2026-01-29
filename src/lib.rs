@@ -29,9 +29,7 @@
 pub mod config;
 pub mod connection;
 pub mod errors;
-pub mod health;
 pub mod ipversion;
-pub mod leak;
 pub mod mode;
 pub mod pool;
 pub mod protocol;
