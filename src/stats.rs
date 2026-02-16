@@ -417,11 +417,13 @@ impl StatsCollector {
             ),
             total_get_time: Duration::from_nanos(self.stats.total_get_time.load(Ordering::Relaxed)),
             last_update_time: {
-                // 读取最后更新时间（不再在读取时修改，避免不必要的写锁开销）
-                self.last_update_time
-                    .read()
-                    .map(|t| *t)
-                    .unwrap_or_else(|_| Instant::now())
+                // 更新 last_update_time：记录最后一次获取统计快照的时间
+                // 注意：update_time() 已优化为空操作，此处是唯一更新点
+                let now = Instant::now();
+                if let Ok(mut last_time) = self.last_update_time.write() {
+                    *last_time = now;
+                }
+                now
             },
         }
     }
