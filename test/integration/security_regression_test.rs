@@ -2,7 +2,6 @@
 // 目标：确保并发安全、ID 唯一性、泄漏驱逐及 UDP 清理逻辑持续正确
 
 use netconnpool::config::ConnectionType;
-use netconnpool::protocol::Protocol;
 use netconnpool::*;
 use std::net::{TcpListener, TcpStream, UdpSocket};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -155,7 +154,7 @@ fn test_connection_id_collision_reconciliation() {
     }));
 
     let pool = Pool::new(config).unwrap();
-    let conn1 = pool.get().unwrap();
+    let _conn1 = pool.get().unwrap();
     // 逻辑验证：如果 ID 冲突，PoolInner::create_connection 会自动递增找到新 ID
     // 此时即使 conn1 还在使用，新创建的连接也能找到唯一 Key 插入
     let _conn2 = pool.get().unwrap();

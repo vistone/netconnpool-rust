@@ -130,6 +130,3 @@ impl PartialEq for NetConnPoolError {
 
 /// 连接池相关错误类型别名
 pub type Result<T> = std::result::Result<T, NetConnPoolError>;
-
-// 为了保持与原项目相同的错误名称，提供静态错误
-pub use NetConnPoolError::*;

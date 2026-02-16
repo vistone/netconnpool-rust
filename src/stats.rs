@@ -356,7 +356,8 @@ impl StatsCollector {
         let total_gets = self.stats.successful_gets.load(Ordering::Relaxed);
         let total_time = self.stats.total_get_time.load(Ordering::Relaxed);
         let avg_time = if total_gets > 0 {
-            total_time / total_gets as u64
+            // 安全转换：确保 total_gets 为正数后再转换为 u64
+            total_time / (total_gets.max(1) as u64)
         } else {
             0
         };
@@ -367,7 +368,8 @@ impl StatsCollector {
         let total_created = self.stats.total_connections_created.load(Ordering::Relaxed);
         let total_reused = self.stats.total_connections_reused.load(Ordering::Relaxed);
         let avg_reuse = if total_created > 0 {
-            total_reused as f64 / total_created as f64
+            // 安全转换：使用 max(0) 确保不会将负数转换为 f64
+            total_reused.max(0) as f64 / total_created.max(1) as f64
         } else {
             0.0
         };
@@ -417,12 +419,11 @@ impl StatsCollector {
             ),
             total_get_time: Duration::from_nanos(self.stats.total_get_time.load(Ordering::Relaxed)),
             last_update_time: {
-                // 在读取时更新 last_update_time，减少锁竞争
-                let now = Instant::now();
-                if let Ok(mut last_time) = self.last_update_time.write() {
-                    *last_time = now;
-                }
-                now
+                // 读取最后更新时间（不再在读取时修改，避免不必要的写锁开销）
+                self.last_update_time
+                    .read()
+                    .map(|t| *t)
+                    .unwrap_or_else(|_| Instant::now())
             },
         }
     }
