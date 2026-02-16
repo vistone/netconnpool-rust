@@ -1,7 +1,7 @@
 // Copyright (c) 2025, vistone
 // All rights reserved.
 
-use std::net::{TcpStream, UdpSocket};
+use crate::config::ConnectionType;
 
 /// Protocol 协议类型
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
@@ -25,21 +25,11 @@ impl std::fmt::Display for Protocol {
     }
 }
 
-/// detect_protocol 检测连接的协议类型
-/// 支持TCP和UDP连接
-/// 注意：这个函数在实际使用中会通过具体类型来判断，这里提供占位实现
-pub fn detect_protocol(_conn: &dyn std::any::Any) -> Protocol {
-    // 实际实现会在 connection.rs 中通过具体类型判断
-    Protocol::Unknown
-}
-
-/// detect_protocol_from_addr 从地址判断协议类型
-pub fn detect_protocol_from_addr(addr: &std::net::SocketAddr) -> Protocol {
-    match addr {
-        std::net::SocketAddr::V4(_) | std::net::SocketAddr::V6(_) => {
-            // 无法从 SocketAddr 直接判断协议，需要从连接类型判断
-            Protocol::Unknown
-        }
+/// detect_protocol 从连接类型检测协议
+pub fn detect_protocol(conn: &ConnectionType) -> Protocol {
+    match conn {
+        ConnectionType::Tcp(_) => Protocol::TCP,
+        ConnectionType::Udp(_) => Protocol::UDP,
     }
 }
 
@@ -64,18 +54,11 @@ impl Protocol {
     }
 }
 
-// 辅助函数：从具体类型检测协议
-pub fn detect_protocol_from_tcp(_: &TcpStream) -> Protocol {
-    Protocol::TCP
-}
-
-pub fn detect_protocol_from_udp(_: &UdpSocket) -> Protocol {
-    Protocol::UDP
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::ConnectionType;
+    use std::net::UdpSocket;
 
     #[test]
     fn test_protocol_display() {
@@ -99,5 +82,22 @@ mod tests {
         assert!(!Protocol::TCP.is_udp());
         assert!(Protocol::UDP.is_udp());
         assert!(!Protocol::UDP.is_tcp());
+    }
+
+    #[test]
+    fn test_detect_protocol() {
+        let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let conn = ConnectionType::Udp(socket);
+        assert_eq!(detect_protocol(&conn), Protocol::UDP);
+    }
+
+    #[test]
+    fn test_detect_protocol_tcp() {
+        use std::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let stream = std::net::TcpStream::connect(addr).unwrap();
+        let conn = ConnectionType::Tcp(stream);
+        assert_eq!(detect_protocol(&conn), Protocol::TCP);
     }
 }

@@ -367,7 +367,7 @@ impl StatsCollector {
         let total_created = self.stats.total_connections_created.load(Ordering::Relaxed);
         let total_reused = self.stats.total_connections_reused.load(Ordering::Relaxed);
         let avg_reuse = if total_created > 0 {
-            total_reused as f64 / total_created as f64
+            total_reused.max(0) as f64 / total_created as f64
         } else {
             0.0
         };
@@ -417,7 +417,8 @@ impl StatsCollector {
             ),
             total_get_time: Duration::from_nanos(self.stats.total_get_time.load(Ordering::Relaxed)),
             last_update_time: {
-                // 在读取时更新 last_update_time，减少锁竞争
+                // 更新 last_update_time：记录最后一次获取统计快照的时间
+                // 注意：update_time() 已优化为空操作，此处是唯一更新点
                 let now = Instant::now();
                 if let Ok(mut last_time) = self.last_update_time.write() {
                     *last_time = now;

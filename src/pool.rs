@@ -11,6 +11,7 @@ use crate::stats::StatsCollector;
 use crate::udp_utils::clear_udp_read_buffer;
 use crossbeam::queue::SegQueue;
 use std::collections::HashMap;
+use std::fmt;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, RwLock, Weak};
@@ -52,6 +53,26 @@ pub struct Pool {
     inner: Arc<PoolInner>,
 }
 
+// 确保 Pool 和 PooledConnection 可以安全地跨线程使用
+// 这些断言在编译期检查，如果类型不满足 Send + Sync 则编译失败
+const _: fn() = || {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<Pool>();
+    assert_send_sync::<PooledConnection>();
+};
+
+impl fmt::Debug for Pool {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Pool")
+            .field("closed", &self.inner.closed.load(Ordering::Relaxed))
+            .field(
+                "active_count",
+                &self.inner.active_count.load(Ordering::Relaxed),
+            )
+            .finish()
+    }
+}
+
 struct PoolInner {
     config: Config,
     // 所有存活的连接，用于管理生命周期和后台清理
@@ -70,6 +91,29 @@ struct PoolInner {
     reaper_cv: Condvar,     // 用于 reaper 线程等待
     reaper_lock: Mutex<()>, // 用于 reaper_cv
     stats_collector: Option<Arc<StatsCollector>>,
+}
+
+impl fmt::Debug for PoolInner {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PoolInner")
+            .field("config", &self.config)
+            .field(
+                "all_connections_len",
+                &self.all_connections.read().map(|c| c.len()).unwrap_or(0),
+            )
+            .field(
+                "idle_counts",
+                &[
+                    self.idle_counts[0].load(Ordering::Relaxed),
+                    self.idle_counts[1].load(Ordering::Relaxed),
+                    self.idle_counts[2].load(Ordering::Relaxed),
+                    self.idle_counts[3].load(Ordering::Relaxed),
+                ],
+            )
+            .field("closed", &self.closed.load(Ordering::Relaxed))
+            .field("active_count", &self.active_count.load(Ordering::Relaxed))
+            .finish()
+    }
 }
 
 impl Pool {
@@ -397,6 +441,27 @@ impl Pool {
         } else {
             crate::stats::Stats::default()
         }
+    }
+
+    /// 检查连接池是否已关闭
+    pub fn is_closed(&self) -> bool {
+        self.inner.is_closed()
+    }
+
+    /// 获取当前活跃（借出）的连接数
+    ///
+    /// 此计数器独立于 `enable_stats` 配置，始终可用。
+    pub fn active_count(&self) -> usize {
+        self.inner.active_count.load(Ordering::Relaxed)
+    }
+
+    /// 获取当前空闲连接数（所有分桶之和）
+    pub fn idle_count(&self) -> usize {
+        self.inner
+            .idle_counts
+            .iter()
+            .map(|c| c.load(Ordering::Relaxed))
+            .sum()
     }
 }
 

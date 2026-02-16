@@ -2,7 +2,6 @@
 // 目标：确保并发安全、ID 唯一性、泄漏驱逐及 UDP 清理逻辑持续正确
 
 use netconnpool::config::ConnectionType;
-use netconnpool::protocol::Protocol;
 use netconnpool::*;
 use std::net::{TcpListener, TcpStream, UdpSocket};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -37,35 +36,46 @@ fn test_idle_counts_consistency() {
     let addr = listener.local_addr().unwrap();
 
     thread::spawn(move || loop {
-        if let Ok((stream, _)) = listener.accept() { drop(stream); }
+        if let Ok((stream, _)) = listener.accept() {
+            drop(stream);
+        }
     });
 
     let mut config = default_config();
     config.max_connections = 100;
     config.max_idle_connections = 50;
     config.dialer = Some(Box::new(move |_| {
-        TcpStream::connect(addr).map(ConnectionType::Tcp)
+        TcpStream::connect(addr)
+            .map(ConnectionType::Tcp)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }));
 
     let pool = Pool::new(config).unwrap();
-    let handles: Vec<_> = (0..10).map(|_| {
-        let pool = pool.clone();
-        thread::spawn(move || {
-            for _ in 0..100 {
-                if let Ok(conn) = pool.get() {
-                    thread::sleep(Duration::from_micros(10));
-                    drop(conn);
+    let handles: Vec<_> = (0..10)
+        .map(|_| {
+            let pool = pool.clone();
+            thread::spawn(move || {
+                for _ in 0..100 {
+                    if let Ok(conn) = pool.get() {
+                        thread::sleep(Duration::from_micros(10));
+                        drop(conn);
+                    }
                 }
-            }
+            })
         })
-    }).collect();
+        .collect();
 
-    for h in handles { h.join().unwrap(); }
+    for h in handles {
+        h.join().unwrap();
+    }
     thread::sleep(Duration::from_millis(100));
 
     let stats = pool.stats();
-    assert!(stats.current_idle_connections <= 50, "空闲连接数超过限制: {}", stats.current_idle_connections);
+    assert!(
+        stats.current_idle_connections <= 50,
+        "空闲连接数超过限制: {}",
+        stats.current_idle_connections
+    );
     println!("    ✅ 通过");
 }
 
@@ -76,13 +86,16 @@ fn test_stats_atomicity() {
     let addr = listener.local_addr().unwrap();
 
     thread::spawn(move || loop {
-        if let Ok((stream, _)) = listener.accept() { drop(stream); }
+        if let Ok((stream, _)) = listener.accept() {
+            drop(stream);
+        }
     });
 
     let mut config = default_config();
     config.max_connections = 200;
     config.dialer = Some(Box::new(move |_| {
-        TcpStream::connect(addr).map(ConnectionType::Tcp)
+        TcpStream::connect(addr)
+            .map(ConnectionType::Tcp)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }));
 
@@ -90,27 +103,37 @@ fn test_stats_atomicity() {
     let total_operations = Arc::new(AtomicUsize::new(0));
     let successful_gets = Arc::new(AtomicUsize::new(0));
 
-    let handles: Vec<_> = (0..20).map(|_| {
-        let pool = pool.clone();
-        let total = total_operations.clone();
-        let success = successful_gets.clone();
-        thread::spawn(move || {
-            for _ in 0..500 {
-                total.fetch_add(1, Ordering::Relaxed);
-                if let Ok(conn) = pool.get() {
-                    success.fetch_add(1, Ordering::Relaxed);
-                    drop(conn);
+    let handles: Vec<_> = (0..20)
+        .map(|_| {
+            let pool = pool.clone();
+            let total = total_operations.clone();
+            let success = successful_gets.clone();
+            thread::spawn(move || {
+                for _ in 0..500 {
+                    total.fetch_add(1, Ordering::Relaxed);
+                    if let Ok(conn) = pool.get() {
+                        success.fetch_add(1, Ordering::Relaxed);
+                        drop(conn);
+                    }
                 }
-            }
+            })
         })
-    }).collect();
+        .collect();
 
-    for h in handles { h.join().unwrap(); }
+    for h in handles {
+        h.join().unwrap();
+    }
     thread::sleep(Duration::from_millis(200));
 
     let stats = pool.stats();
-    assert_eq!(stats.total_get_requests as usize, total_operations.load(Ordering::Relaxed));
-    assert_eq!(stats.successful_gets as usize, successful_gets.load(Ordering::Relaxed));
+    assert_eq!(
+        stats.total_get_requests as usize,
+        total_operations.load(Ordering::Relaxed)
+    );
+    assert_eq!(
+        stats.successful_gets as usize,
+        successful_gets.load(Ordering::Relaxed)
+    );
     println!("    ✅ 通过");
 }
 
@@ -119,19 +142,26 @@ fn test_connection_id_uniqueness() {
     println!("\n[3] 验证连接 ID 唯一性...");
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
-    thread::spawn(move || loop { if let Ok((s,_)) = listener.accept() { drop(s); } });
+    thread::spawn(move || loop {
+        if let Ok((s, _)) = listener.accept() {
+            drop(s);
+        }
+    });
 
     let mut config = default_config();
     config.max_connections = 1000;
     config.dialer = Some(Box::new(move |_| {
-        TcpStream::connect(addr).map(ConnectionType::Tcp)
+        TcpStream::connect(addr)
+            .map(ConnectionType::Tcp)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }));
 
     let pool = Pool::new(config).unwrap();
     let mut connections = Vec::new();
     for _ in 0..500 {
-        if let Ok(conn) = pool.get() { connections.push(conn); }
+        if let Ok(conn) = pool.get() {
+            connections.push(conn);
+        }
     }
 
     let mut ids = std::collections::HashSet::new();
@@ -150,12 +180,13 @@ fn test_connection_id_collision_reconciliation() {
     let addr = listener.local_addr().unwrap();
 
     config.dialer = Some(Box::new(move |_| {
-        TcpStream::connect(addr).map(ConnectionType::Tcp)
+        TcpStream::connect(addr)
+            .map(ConnectionType::Tcp)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }));
 
     let pool = Pool::new(config).unwrap();
-    let conn1 = pool.get().unwrap();
+    let _conn1 = pool.get().unwrap();
     // 逻辑验证：如果 ID 冲突，PoolInner::create_connection 会自动递增找到新 ID
     // 此时即使 conn1 还在使用，新创建的连接也能找到唯一 Key 插入
     let _conn2 = pool.get().unwrap();
@@ -176,7 +207,8 @@ fn test_forced_eviction_of_leaked_connections() {
     let addr = listener.local_addr().unwrap();
 
     config.dialer = Some(Box::new(move |_| {
-        TcpStream::connect(addr).map(ConnectionType::Tcp)
+        TcpStream::connect(addr)
+            .map(ConnectionType::Tcp)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }));
 
@@ -222,7 +254,8 @@ fn test_udp_buffer_clearing_on_get() {
     // 步骤 2: 再次获取。连接池应在 Get 时清理缓冲区
     let conn = pool.get_udp().unwrap();
     let udp = conn.udp_conn().unwrap();
-    udp.set_read_timeout(Some(Duration::from_millis(100))).unwrap();
+    udp.set_read_timeout(Some(Duration::from_millis(100)))
+        .unwrap();
 
     let mut buf = [0u8; 1024];
     let result = udp.recv(&mut buf);
@@ -237,7 +270,8 @@ fn test_pool_closure_reaper_exit() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
     config.dialer = Some(Box::new(move |_| {
-        TcpStream::connect(addr).map(ConnectionType::Tcp)
+        TcpStream::connect(addr)
+            .map(ConnectionType::Tcp)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }));
 
@@ -246,7 +280,11 @@ fn test_pool_closure_reaper_exit() {
     pool.close().unwrap();
     let elapsed = start.elapsed();
 
-    assert!(elapsed < Duration::from_millis(100), "关闭超时: {:?}", elapsed);
+    assert!(
+        elapsed < Duration::from_millis(100),
+        "关闭超时: {:?}",
+        elapsed
+    );
     println!("    ✅ 通过 (耗时 {:?})", elapsed);
 }
 
@@ -256,34 +294,45 @@ fn test_comprehensive_stability() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
 
-    thread::spawn(move || loop { if let Ok((s,_)) = listener.accept() { drop(s); } });
+    thread::spawn(move || loop {
+        if let Ok((s, _)) = listener.accept() {
+            drop(s);
+        }
+    });
 
     let mut config = default_config();
     config.max_connections = 50;
     config.dialer = Some(Box::new(move |_| {
-        TcpStream::connect(addr).map(ConnectionType::Tcp)
+        TcpStream::connect(addr)
+            .map(ConnectionType::Tcp)
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }));
 
     let pool = Pool::new(config).unwrap();
     let stop = Arc::new(AtomicBool::new(false));
 
-    let handles: Vec<_> = (0..8).map(|i| {
-        let pool = pool.clone();
-        let stop = stop.clone();
-        thread::spawn(move || {
-            while !stop.load(Ordering::Relaxed) {
-                if let Ok(c) = pool.get() {
-                    if i % 2 == 0 { thread::sleep(Duration::from_micros(10)); }
-                    drop(c);
+    let handles: Vec<_> = (0..8)
+        .map(|i| {
+            let pool = pool.clone();
+            let stop = stop.clone();
+            thread::spawn(move || {
+                while !stop.load(Ordering::Relaxed) {
+                    if let Ok(c) = pool.get() {
+                        if i % 2 == 0 {
+                            thread::sleep(Duration::from_micros(10));
+                        }
+                        drop(c);
+                    }
                 }
-            }
+            })
         })
-    }).collect();
+        .collect();
 
     thread::sleep(Duration::from_secs(2));
     stop.store(true, Ordering::Relaxed);
-    for h in handles { h.join().unwrap(); }
+    for h in handles {
+        h.join().unwrap();
+    }
 
     let stats = pool.stats();
     assert!(stats.current_active_connections >= 0);
