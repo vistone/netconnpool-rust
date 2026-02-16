@@ -22,7 +22,7 @@ pub type BorrowReturnCallback = dyn Fn(&ConnectionType) + Send + Sync;
 
 /// Dialer 连接创建函数类型（客户端模式）
 /// 返回网络连接和错误
-/// 参数 Option<Protocol> 表示调用方请求的协议，Dialer 应尽量满足
+/// 参数 `Option<Protocol>` 表示调用方请求的协议，Dialer 应尽量满足
 pub type Dialer = Box<
     dyn Fn(
             Option<Protocol>,
