@@ -16,7 +16,9 @@ use std::time::Duration;
 /// 创建一个真正处理数据的 TCP 回声服务器
 fn create_tcp_echo_server() -> (TcpListener, Arc<AtomicBool>, Arc<AtomicU64>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    listener.set_nonblocking(true).expect("Failed to set non-blocking mode on TCP listener");
+    listener
+        .set_nonblocking(true)
+        .expect("Failed to set non-blocking mode on TCP listener");
     let stop = Arc::new(AtomicBool::new(false));
     let bytes_processed = Arc::new(AtomicU64::new(0));
 
@@ -73,7 +75,9 @@ fn handle_tcp_client(mut stream: TcpStream, bytes: Arc<AtomicU64>, stop: Arc<Ato
 /// 创建一个真正处理数据的 UDP 回声服务器
 fn create_udp_echo_server() -> (UdpSocket, Arc<AtomicBool>, Arc<AtomicU64>) {
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
-    socket.set_nonblocking(true).expect("Failed to set non-blocking mode on UDP socket");
+    socket
+        .set_nonblocking(true)
+        .expect("Failed to set non-blocking mode on UDP socket");
     let stop = Arc::new(AtomicBool::new(false));
     let bytes_processed = Arc::new(AtomicU64::new(0));
 
@@ -131,17 +135,21 @@ fn test_tcp_real_data_transmission() {
     // 进行多次数据传输
     for i in 0..100 {
         let conn = pool.get_tcp().expect("应该能获取 TCP 连接");
-        
+
         if let Some(stream) = conn.tcp_conn() {
             // 克隆 stream 用于读写（因为我们只有不可变引用）
             let mut stream_clone = stream.try_clone().expect("应该能克隆 stream");
-            stream_clone.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
-            stream_clone.set_write_timeout(Some(Duration::from_secs(1))).unwrap();
+            stream_clone
+                .set_read_timeout(Some(Duration::from_secs(1)))
+                .unwrap();
+            stream_clone
+                .set_write_timeout(Some(Duration::from_secs(1)))
+                .unwrap();
 
             // 发送数据
             let send_data = format!("{}-{:?}", i, test_data);
             let bytes_to_send = send_data.as_bytes();
-            
+
             match stream_clone.write_all(bytes_to_send) {
                 Ok(_) => {
                     total_sent += bytes_to_send.len() as u64;
@@ -187,7 +195,7 @@ fn test_tcp_real_data_transmission() {
     assert!(total_received > 0, "应该接收了数据");
     assert_eq!(total_sent, total_received, "发送和接收的数据量应该相等");
     assert!(server_processed > 0, "服务器应该处理了数据");
-    
+
     println!("\n✅ TCP 真实数据传输测试通过！");
 }
 
@@ -219,15 +227,19 @@ fn test_udp_real_data_transmission() {
     // 进行多次数据传输
     for i in 0..50 {
         let conn = pool.get_udp().expect("应该能获取 UDP 连接");
-        
+
         if let Some(socket) = conn.udp_conn() {
-            socket.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
-            socket.set_write_timeout(Some(Duration::from_secs(1))).unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(1)))
+                .unwrap();
+            socket
+                .set_write_timeout(Some(Duration::from_secs(1)))
+                .unwrap();
 
             // 发送数据
             let send_data = format!("UDP packet #{}: Hello from test!", i);
             let bytes_to_send = send_data.as_bytes();
-            
+
             match socket.send(bytes_to_send) {
                 Ok(n) => {
                     total_sent += n as u64;
@@ -270,7 +282,7 @@ fn test_udp_real_data_transmission() {
     assert!(total_sent > 0, "应该发送了数据");
     assert!(total_received > 0, "应该接收了数据");
     assert!(server_processed > 0, "服务器应该处理了数据");
-    
+
     println!("\n✅ UDP 真实数据传输测试通过！");
 }
 
@@ -316,9 +328,13 @@ fn test_concurrent_real_data_transmission() {
                         if let Some(stream) = conn.tcp_conn() {
                             if let Ok(mut stream_clone) = stream.try_clone() {
                                 let _ = stream_clone.set_read_timeout(Some(Duration::from_secs(2)));
-                                let _ = stream_clone.set_write_timeout(Some(Duration::from_secs(2)));
+                                let _ =
+                                    stream_clone.set_write_timeout(Some(Duration::from_secs(2)));
 
-                                let data = format!("Thread-{}-Op-{}: Test data for concurrent transmission!", thread_id, i);
+                                let data = format!(
+                                    "Thread-{}-Op-{}: Test data for concurrent transmission!",
+                                    thread_id, i
+                                );
                                 let bytes = data.as_bytes();
 
                                 if stream_clone.write_all(bytes).is_ok() {
@@ -327,7 +343,8 @@ fn test_concurrent_real_data_transmission() {
 
                                     let mut response = vec![0u8; bytes.len()];
                                     if stream_clone.read_exact(&mut response).is_ok() {
-                                        received.fetch_add(response.len() as u64, Ordering::Relaxed);
+                                        received
+                                            .fetch_add(response.len() as u64, Ordering::Relaxed);
                                         if response == bytes {
                                             success.fetch_add(1, Ordering::Relaxed);
                                         }
@@ -357,7 +374,11 @@ fn test_concurrent_real_data_transmission() {
     println!("并发测试结果:");
     println!("  线程数: {}", num_threads);
     println!("  每线程操作数: {}", ops_per_thread);
-    println!("  成功数据验证: {}/{}", final_success, num_threads * ops_per_thread);
+    println!(
+        "  成功数据验证: {}/{}",
+        final_success,
+        num_threads * ops_per_thread
+    );
     println!("  客户端发送: {} 字节", final_sent);
     println!("  客户端接收: {} 字节", final_received);
     println!("  服务器处理: {} 字节", server_processed);
@@ -370,11 +391,15 @@ fn test_concurrent_real_data_transmission() {
     assert!(final_received > 0, "应该接收了数据");
     assert!(final_success > 0, "应该有成功的数据验证");
     assert!(server_processed > 0, "服务器应该处理了数据");
-    
+
     // 验证成功率（在本地回环测试中应该非常高）
     let success_rate = final_success as f64 / (num_threads * ops_per_thread) as f64 * 100.0;
     println!("  成功率: {:.2}%", success_rate);
-    assert!(success_rate > 95.0, "成功率应该超过 95%，实际: {:.2}%", success_rate);
+    assert!(
+        success_rate > 95.0,
+        "成功率应该超过 95%，实际: {:.2}%",
+        success_rate
+    );
 
     println!("\n✅ 并发真实数据传输测试通过！");
 }
@@ -390,7 +415,7 @@ fn test_connection_reuse_data_isolation() {
     let addr = listener.local_addr().unwrap().to_string();
 
     let mut config = default_config();
-    config.max_connections = 1;  // 强制只有一个连接，确保复用
+    config.max_connections = 1; // 强制只有一个连接，确保复用
     config.min_connections = 1;
     config.dialer = Some(Box::new(move |_| {
         TcpStream::connect(&addr)
@@ -406,8 +431,12 @@ fn test_connection_reuse_data_isolation() {
         let conn = pool.get_tcp().expect("应该能获取连接");
         if let Some(stream) = conn.tcp_conn() {
             let mut stream_clone = stream.try_clone().unwrap();
-            stream_clone.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
-            stream_clone.set_write_timeout(Some(Duration::from_secs(1))).unwrap();
+            stream_clone
+                .set_read_timeout(Some(Duration::from_secs(1)))
+                .unwrap();
+            stream_clone
+                .set_write_timeout(Some(Duration::from_secs(1)))
+                .unwrap();
 
             let data1 = b"First message from first user";
             stream_clone.write_all(data1).unwrap();
@@ -427,8 +456,12 @@ fn test_connection_reuse_data_isolation() {
 
         if let Some(stream) = conn.tcp_conn() {
             let mut stream_clone = stream.try_clone().unwrap();
-            stream_clone.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
-            stream_clone.set_write_timeout(Some(Duration::from_secs(1))).unwrap();
+            stream_clone
+                .set_read_timeout(Some(Duration::from_secs(1)))
+                .unwrap();
+            stream_clone
+                .set_write_timeout(Some(Duration::from_secs(1)))
+                .unwrap();
 
             let data2 = b"Second message from second user - different data";
             stream_clone.write_all(data2).unwrap();
@@ -436,9 +469,12 @@ fn test_connection_reuse_data_isolation() {
 
             let mut response = vec![0u8; data2.len()];
             stream_clone.read_exact(&mut response).unwrap();
-            
+
             // 关键验证：复用的连接不应该返回上一次的数据
-            assert_eq!(&response, data2, "复用连接的回显应该是当前发送的数据，不是上一次的数据");
+            assert_eq!(
+                &response, data2,
+                "复用连接的回显应该是当前发送的数据，不是上一次的数据"
+            );
         }
     }
 
@@ -478,8 +514,12 @@ fn test_large_data_transmission() {
         let conn = pool.get_tcp().expect("应该能获取连接");
         if let Some(stream) = conn.tcp_conn() {
             let mut stream_clone = stream.try_clone().unwrap();
-            stream_clone.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
-            stream_clone.set_write_timeout(Some(Duration::from_secs(5))).unwrap();
+            stream_clone
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            stream_clone
+                .set_write_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
 
             // 发送大数据
             if stream_clone.write_all(&large_data).is_ok() {
@@ -502,8 +542,16 @@ fn test_large_data_transmission() {
     let server_processed = server_bytes.load(Ordering::Relaxed);
 
     println!("测试结果:");
-    println!("  发送: {} 字节 ({:.2} KB)", total_sent, total_sent as f64 / 1024.0);
-    println!("  接收: {} 字节 ({:.2} KB)", total_received, total_received as f64 / 1024.0);
+    println!(
+        "  发送: {} 字节 ({:.2} KB)",
+        total_sent,
+        total_sent as f64 / 1024.0
+    );
+    println!(
+        "  接收: {} 字节 ({:.2} KB)",
+        total_received,
+        total_received as f64 / 1024.0
+    );
     println!("  服务器处理: {} 字节", server_processed);
 
     assert!(total_sent >= 10 * 1024, "应该发送了至少 10KB 数据");

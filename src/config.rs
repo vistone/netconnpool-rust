@@ -162,14 +162,20 @@ impl std::fmt::Debug for Config {
             .field("dialer", &self.dialer.as_ref().map(|_| "..."))
             .field("listener", &self.listener)
             .field("acceptor", &self.acceptor.as_ref().map(|_| "..."))
-            .field("health_checker", &self.health_checker.as_ref().map(|_| "..."))
+            .field(
+                "health_checker",
+                &self.health_checker.as_ref().map(|_| "..."),
+            )
             .field("close_conn", &self.close_conn.as_ref().map(|_| "..."))
             .field("on_created", &self.on_created.as_ref().map(|_| "..."))
             .field("on_borrow", &self.on_borrow.as_ref().map(|_| "..."))
             .field("on_return", &self.on_return.as_ref().map(|_| "..."))
             .field("enable_stats", &self.enable_stats)
             .field("enable_health_check", &self.enable_health_check)
-            .field("clear_udp_buffer_on_return", &self.clear_udp_buffer_on_return)
+            .field(
+                "clear_udp_buffer_on_return",
+                &self.clear_udp_buffer_on_return,
+            )
             .field("udp_buffer_clear_timeout", &self.udp_buffer_clear_timeout)
             .field("max_buffer_clear_packets", &self.max_buffer_clear_packets)
             .finish()

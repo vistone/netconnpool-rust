@@ -65,7 +65,10 @@ impl fmt::Debug for Pool {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Pool")
             .field("closed", &self.inner.closed.load(Ordering::Relaxed))
-            .field("active_count", &self.inner.active_count.load(Ordering::Relaxed))
+            .field(
+                "active_count",
+                &self.inner.active_count.load(Ordering::Relaxed),
+            )
             .finish()
     }
 }
@@ -94,13 +97,19 @@ impl fmt::Debug for PoolInner {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PoolInner")
             .field("config", &self.config)
-            .field("all_connections_len", &self.all_connections.read().map(|c| c.len()).unwrap_or(0))
-            .field("idle_counts", &[
-                self.idle_counts[0].load(Ordering::Relaxed),
-                self.idle_counts[1].load(Ordering::Relaxed),
-                self.idle_counts[2].load(Ordering::Relaxed),
-                self.idle_counts[3].load(Ordering::Relaxed),
-            ])
+            .field(
+                "all_connections_len",
+                &self.all_connections.read().map(|c| c.len()).unwrap_or(0),
+            )
+            .field(
+                "idle_counts",
+                &[
+                    self.idle_counts[0].load(Ordering::Relaxed),
+                    self.idle_counts[1].load(Ordering::Relaxed),
+                    self.idle_counts[2].load(Ordering::Relaxed),
+                    self.idle_counts[3].load(Ordering::Relaxed),
+                ],
+            )
             .field("closed", &self.closed.load(Ordering::Relaxed))
             .field("active_count", &self.active_count.load(Ordering::Relaxed))
             .finish()
