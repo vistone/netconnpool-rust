@@ -145,6 +145,37 @@ impl Default for Config {
     }
 }
 
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("mode", &self.mode)
+            .field("max_connections", &self.max_connections)
+            .field("min_connections", &self.min_connections)
+            .field("max_idle_connections", &self.max_idle_connections)
+            .field("connection_timeout", &self.connection_timeout)
+            .field("idle_timeout", &self.idle_timeout)
+            .field("max_lifetime", &self.max_lifetime)
+            .field("get_connection_timeout", &self.get_connection_timeout)
+            .field("health_check_interval", &self.health_check_interval)
+            .field("health_check_timeout", &self.health_check_timeout)
+            .field("connection_leak_timeout", &self.connection_leak_timeout)
+            .field("dialer", &self.dialer.as_ref().map(|_| "..."))
+            .field("listener", &self.listener)
+            .field("acceptor", &self.acceptor.as_ref().map(|_| "..."))
+            .field("health_checker", &self.health_checker.as_ref().map(|_| "..."))
+            .field("close_conn", &self.close_conn.as_ref().map(|_| "..."))
+            .field("on_created", &self.on_created.as_ref().map(|_| "..."))
+            .field("on_borrow", &self.on_borrow.as_ref().map(|_| "..."))
+            .field("on_return", &self.on_return.as_ref().map(|_| "..."))
+            .field("enable_stats", &self.enable_stats)
+            .field("enable_health_check", &self.enable_health_check)
+            .field("clear_udp_buffer_on_return", &self.clear_udp_buffer_on_return)
+            .field("udp_buffer_clear_timeout", &self.udp_buffer_clear_timeout)
+            .field("max_buffer_clear_packets", &self.max_buffer_clear_packets)
+            .finish()
+    }
+}
+
 /// default_config 返回默认配置（客户端模式）
 pub fn default_config() -> Config {
     Config::default_config()
