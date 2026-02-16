@@ -90,4 +90,14 @@ mod tests {
         let conn = ConnectionType::Udp(socket);
         assert_eq!(detect_protocol(&conn), Protocol::UDP);
     }
+
+    #[test]
+    fn test_detect_protocol_tcp() {
+        use std::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let stream = std::net::TcpStream::connect(addr).unwrap();
+        let conn = ConnectionType::Tcp(stream);
+        assert_eq!(detect_protocol(&conn), Protocol::TCP);
+    }
 }

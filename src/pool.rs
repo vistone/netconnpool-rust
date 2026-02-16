@@ -55,11 +55,11 @@ pub struct Pool {
 
 // 确保 Pool 和 PooledConnection 可以安全地跨线程使用
 // 这些断言在编译期检查，如果类型不满足 Send + Sync 则编译失败
-fn _assert_send_sync<T: Send + Sync>() {}
-fn _assert_pool_send_sync() {
-    _assert_send_sync::<Pool>();
-    _assert_send_sync::<PooledConnection>();
-}
+const _: fn() = || {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<Pool>();
+    assert_send_sync::<PooledConnection>();
+};
 
 impl fmt::Debug for Pool {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -94,7 +94,7 @@ impl fmt::Debug for PoolInner {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PoolInner")
             .field("config", &self.config)
-            .field("all_connections_count", &self.all_connections.read().map(|c| c.len()).unwrap_or(0))
+            .field("all_connections_len", &self.all_connections.read().map(|c| c.len()).unwrap_or(0))
             .field("idle_counts", &[
                 self.idle_counts[0].load(Ordering::Relaxed),
                 self.idle_counts[1].load(Ordering::Relaxed),
