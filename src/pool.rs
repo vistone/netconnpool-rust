@@ -1253,7 +1253,50 @@ impl PoolInner {
         let _ = conn.close();
     }
 
-    // remove_from_idle_if_present 已移除
-    // 现在完全依赖 is_connection_valid_for_borrow 在 get() 时进行延迟清理
-    // 这样可以避免队列顺序混乱和性能问题
+    fn remove_from_idle_if_present(&self, conn: &Arc<Connection>) {
+        if let Some(idx) = Self::get_bucket_index(conn.get_protocol(), conn.get_ip_version()) {
+            // 无锁队列没有 retain 方法
+            // 为了性能，我们采用"标记移除"策略：
+            // 1. 连接在队列中时，会在 return_connection 时通过 is_connection_valid_for_borrow 检查被过滤
+            // 2. 这里我们尝试从队列中移除（如果存在），但为了性能，我们限制最大检查次数
+            // 3. 由于无锁队列的特性，这个操作是 best-effort 的
+
+            // 优化：减少检查次数，因为无锁队列不支持高效查找
+            // 主要依赖 return_connection 时的 is_connection_valid_for_borrow 检查来过滤无效连接
+            const MAX_CHECK: usize = 10; // 最多检查 10 个连接，避免高并发下的性能问题
+            let mut checked = 0;
+            let mut found = false;
+            let mut temp_vec = Vec::new();
+
+            // 尝试从队列中查找并移除目标连接（限制检查次数）
+            while checked < MAX_CHECK {
+                if let Some(c) = self.idle_connections[idx].pop() {
+                    checked += 1;
+                    if c.id == conn.id {
+                        found = true;
+                        self.idle_counts[idx].fetch_sub(1, Ordering::Relaxed);
+                        // 不将连接放回队列
+                        break;
+                    } else {
+                        temp_vec.push(c);
+                    }
+                } else {
+                    // 队列为空，停止查找
+                    break;
+                }
+            }
+
+            // 将其他连接放回队列
+            for c in temp_vec {
+                self.idle_connections[idx].push(c);
+            }
+
+            if found {
+                if let Some(stats) = &self.stats_collector {
+                    // 从 idle 移除一次
+                    self.update_stats_on_idle_pop(stats, conn);
+                }
+            }
+        }
+    }
 }
