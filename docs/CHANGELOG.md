@@ -5,6 +5,22 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.5] - 2026-03-14
+
+### 修复
+- **整数溢出修复**: 修复 `stats.rs` 中 `total_gets` 从 `i64` 转换为 `u64` 时可能为负数的问题，添加 `.max(0)` 保护
+- **缓冲区溢出修复**: 将 `udp_utils.rs` 中的 UDP 缓冲区从栈分配 `[0u8; 65536]` 改为堆分配 `vec![0u8; 65536]`，防止栈溢出
+
+### 优化
+- **依赖精简**: 将 `crossbeam` 替换为 `crossbeam-queue`，减少依赖树
+- **移除不必要的依赖**: 移除 `tokio-test` dev-dependency
+- **CI 增强**: 在 GitHub Actions 中添加 `cargo deny check` 检查依赖安全性和许可证合规性
+
+### API 改进
+- **新增 `try_get()` 方法**: 非阻塞获取连接，语义清晰
+- **新增 `acquire()` 别名**: 更符合 Rust 命名习惯的获取语义
+- **统一命名风格**: `protocol()` / `ip_version()` 替代 `get_protocol()` / `get_ip_version()`，旧方法标记为 deprecated
+
 ## [1.0.4] - 2025-12-29
 
 ### 修复
