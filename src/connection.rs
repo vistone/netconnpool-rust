@@ -16,8 +16,8 @@ pub type OnCloseCallback =
 
 /// Connection 连接封装
 pub struct Connection {
-    /// ID 连接唯一标识符
-    pub id: u64,
+    /// ID 连接唯一标识符（使用 AtomicU64 支持 ID 冲突时更新）
+    id: AtomicU64,
 
     /// Conn 底层连接对象（TCP或UDP）
     conn: ConnectionType,
@@ -64,7 +64,7 @@ use std::fmt;
 impl fmt::Debug for Connection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Connection")
-            .field("id", &self.id)
+            .field("id", &self.id())
             .field("conn", &self.conn)
             .field("protocol", &self.protocol)
             .field("ip_version", &self.ip_version)
@@ -160,7 +160,7 @@ impl Connection {
             .min(u64::MAX as u128) as u64;
 
         Self {
-            id,
+            id: AtomicU64::new(id),
             conn,
             protocol,
             ip_version,
@@ -199,6 +199,16 @@ impl Connection {
     /// GetIPVersion 获取连接的IP版本
     pub fn get_ip_version(&self) -> IPVersion {
         self.ip_version
+    }
+
+    /// 获取连接 ID
+    pub fn id(&self) -> u64 {
+        self.id.load(Ordering::Relaxed)
+    }
+
+    /// 更新连接 ID（仅在 ID 冲突时使用）
+    pub fn update_id(&self, new_id: u64) {
+        self.id.store(new_id, Ordering::Relaxed);
     }
 
     /// GetConn 获取底层连接对象（TCP流）

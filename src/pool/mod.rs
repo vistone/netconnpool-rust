@@ -1,6 +1,8 @@
 // Copyright (c) 2025, vistone
 // All rights reserved.
 
+mod pooled_connection;
+
 use crate::config::{Config, ConnectionType};
 use crate::connection::Connection;
 use crate::errors::{NetConnPoolError, Result};
@@ -12,40 +14,12 @@ use crate::udp_utils::clear_udp_read_buffer;
 use crossbeam::queue::SegQueue;
 use std::collections::HashMap;
 use std::fmt;
-use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, RwLock, Weak};
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// PooledConnection 自动归还的连接包装器
-/// 实现 RAII 机制，Drop 时自动归还连接到池中
-#[derive(Debug)]
-pub struct PooledConnection {
-    conn: Arc<Connection>,
-    pool: Weak<PoolInner>,
-}
-
-impl PooledConnection {
-    fn new(conn: Arc<Connection>, pool: Weak<PoolInner>) -> Self {
-        Self { conn, pool }
-    }
-}
-
-impl Deref for PooledConnection {
-    type Target = Connection;
-    fn deref(&self) -> &Self::Target {
-        &self.conn
-    }
-}
-
-impl Drop for PooledConnection {
-    fn drop(&mut self) {
-        if let Some(pool) = self.pool.upgrade() {
-            pool.return_connection(self.conn.clone());
-        }
-    }
-}
+pub use pooled_connection::PooledConnection;
 
 /// Pool 连接池
 #[derive(Clone)]
@@ -73,7 +47,7 @@ impl fmt::Debug for Pool {
     }
 }
 
-struct PoolInner {
+pub(crate) struct PoolInner {
     config: Config,
     // 所有存活的连接，用于管理生命周期和后台清理
     all_connections: RwLock<HashMap<u64, Arc<Connection>>>,
@@ -466,7 +440,7 @@ impl Pool {
 }
 
 impl PoolInner {
-    fn is_closed(&self) -> bool {
+    pub(crate) fn is_closed(&self) -> bool {
         self.closed.load(Ordering::Acquire)
     }
 
@@ -865,7 +839,7 @@ impl PoolInner {
             // 检查连接 ID 是否冲突（虽然概率极低，但需要处理）
             // 如果冲突，说明 ID 生成器溢出后重置，且旧连接仍存在
             // 这种情况下，我们递增 ID 直到找到不冲突的
-            let mut final_id = conn.id;
+            let mut final_id = conn.id();
             if connections.contains_key(&final_id) {
                 // 从当前 ID 开始递增，直到找到不冲突的 ID
                 loop {
@@ -877,7 +851,7 @@ impl PoolInner {
                         break;
                     }
                     // 防止无限循环（理论上不应该发生，因为连接数有限）
-                    if final_id == conn.id {
+                    if final_id == conn.id() {
                         eprintln!("错误: 无法找到不冲突的连接 ID");
                         drop(connections);
                         self.close_connection(&conn);
@@ -886,13 +860,11 @@ impl PoolInner {
                         )));
                     }
                 }
-                eprintln!("警告: 连接 ID {} 冲突，已调整为 {}", conn.id, final_id);
+                eprintln!("警告: 连接 ID {} 冲突，已调整为 {}", conn.id(), final_id);
+                // 更新连接对象的 ID，确保与 key 一致
+                conn.update_id(final_id);
             }
 
-            // 注意：由于 Connection 的 id 字段是普通字段，我们不能直接修改
-            // 但我们可以使用新的 ID 作为 key 插入，这样连接池可以正确管理连接
-            // 虽然 conn.id 和实际存储的 key 不一致，但这不影响功能
-            // 因为连接池使用 all_connections 来管理连接，而不是依赖 id 字段
             connections.insert(final_id, conn.clone());
         }
 
@@ -945,37 +917,8 @@ impl PoolInner {
 
         // Put back to idle list (无锁操作)
         if let Some(idx) = Self::get_bucket_index(conn.get_protocol(), conn.get_ip_version()) {
-            // 使用 CAS 操作原子地检查和增加计数器，避免竞态条件
-            let max_idle = self.config.max_idle_connections;
-            loop {
-                let current = self.idle_counts[idx].load(Ordering::Relaxed);
-                if current >= max_idle {
-                    // 超过最大空闲连接数，直接移除
-                    let _ = self.remove_connection(&conn);
-                    break;
-                }
-                // 尝试原子地增加计数器
-                match self.idle_counts[idx].compare_exchange_weak(
-                    current,
-                    current + 1,
-                    Ordering::Relaxed,
-                    Ordering::Relaxed,
-                ) {
-                    Ok(_) => {
-                        // CAS 成功，推入队列
-                        self.idle_connections[idx].push(conn.clone());
-
-                        if let Some(stats) = &self.stats_collector {
-                            self.update_stats_on_idle_push(stats, &conn);
-                        }
-                        break;
-                    }
-                    Err(_) => {
-                        // CAS 失败，其他线程修改了计数器，重试
-                        continue;
-                    }
-                }
-            }
+            // 使用提取的辅助方法处理 CAS 逻辑
+            self.try_push_idle(conn, idx);
         } else {
             // Unknown protocol/ip, cannot pool efficiently. Close it.
             let _ = self.remove_connection(&conn);
@@ -1013,25 +956,9 @@ impl PoolInner {
                 )))
             })?;
 
-            // 首先尝试使用 conn.id 移除（正常情况）
-            if connections.remove(&conn.id).is_none() {
-                // 如果找不到，说明 ID 冲突时使用了不同的 key
-                // 遍历查找并移除（使用 Arc::ptr_eq 比较指针，确保找到正确的连接）
-                let conn_ptr = Arc::as_ptr(conn);
-                let mut found_key = None;
-                for (key, value) in connections.iter() {
-                    if Arc::as_ptr(value) == conn_ptr {
-                        found_key = Some(*key);
-                        break;
-                    }
-                }
-                if let Some(key) = found_key {
-                    connections.remove(&key);
-                } else {
-                    // 连接不在映射中，可能已经被移除或从未插入
-                    // 这是正常的，不需要报错
-                }
-            }
+            // 使用 conn.id() 移除连接
+            // ID 冲突已在 create_connection 中处理，确保 conn.id() 与 key 一致
+            connections.remove(&conn.id());
         }
 
         if let Some(stats) = &self.stats_collector {
@@ -1089,7 +1016,8 @@ impl PoolInner {
                                 }
                                 eprintln!(
                                     "警告: 强制驱逐严重泄漏的连接 ID {} (泄漏时间: {:?})",
-                                    conn.id, leaked_duration
+                                    conn.id(),
+                                    leaked_duration
                                 );
                                 // 强制移除泄漏连接，防止内存无限增长
                                 let _ = self.remove_connection(&conn);
@@ -1210,39 +1138,47 @@ impl PoolInner {
         conn.mark_idle();
 
         if let Some(idx) = Self::get_bucket_index(conn.get_protocol(), conn.get_ip_version()) {
-            // 使用 CAS 操作原子地检查和增加计数器，避免竞态条件
-            let max_idle = self.config.max_idle_connections;
-            loop {
-                let current = self.idle_counts[idx].load(Ordering::Relaxed);
-                if current >= max_idle {
-                    // 超过最大空闲连接数，直接移除
-                    let _ = self.remove_connection(&conn);
-                    break;
-                }
-                // 尝试原子地增加计数器
-                match self.idle_counts[idx].compare_exchange_weak(
-                    current,
-                    current + 1,
-                    Ordering::Relaxed,
-                    Ordering::Relaxed,
-                ) {
-                    Ok(_) => {
-                        // CAS 成功，推入队列
-                        self.idle_connections[idx].push(conn.clone());
-
-                        if let Some(stats) = &self.stats_collector {
-                            self.update_stats_on_idle_push(stats, &conn);
-                        }
-                        break;
-                    }
-                    Err(_) => {
-                        // CAS 失败，其他线程修改了计数器，重试
-                        continue;
-                    }
-                }
-            }
+            // 使用提取的辅助方法处理 CAS 逻辑
+            self.try_push_idle(conn, idx);
         } else {
             let _ = self.remove_connection(&conn);
+        }
+    }
+
+    /// 尝试将连接推入空闲队列（使用 CAS 操作保证线程安全）
+    ///
+    /// 使用 CAS 操作原子地检查和增加计数器，避免竞态条件。
+    /// 如果超过最大空闲连接数，会移除连接。
+    fn try_push_idle(&self, conn: Arc<Connection>, idx: usize) {
+        let max_idle = self.config.max_idle_connections;
+        loop {
+            let current = self.idle_counts[idx].load(Ordering::Relaxed);
+            if current >= max_idle {
+                // 超过最大空闲连接数，直接移除
+                let _ = self.remove_connection(&conn);
+                break;
+            }
+            // 尝试原子地增加计数器
+            match self.idle_counts[idx].compare_exchange_weak(
+                current,
+                current + 1,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => {
+                    // CAS 成功，推入队列
+                    self.idle_connections[idx].push(conn.clone());
+
+                    if let Some(stats) = &self.stats_collector {
+                        self.update_stats_on_idle_push(stats, &conn);
+                    }
+                    break;
+                }
+                Err(_) => {
+                    // CAS 失败，其他线程修改了计数器，重试
+                    continue;
+                }
+            }
         }
     }
 

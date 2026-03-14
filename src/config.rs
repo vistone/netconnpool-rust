@@ -361,3 +361,211 @@ fn default_acceptor(
         .map(|(stream, _)| stream)
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
 }
+
+/// ConfigBuilder 用于构建 Config 的配置构建器
+///
+/// 提供流畅的 API 来创建连接池配置。
+///
+/// # 示例
+/// ```rust,no_run
+/// use netconnpool::{ConfigBuilder, PoolMode};
+/// use std::net::TcpStream;
+///
+/// let config = ConfigBuilder::new()
+///     .mode(PoolMode::Client)
+///     .max_connections(100)
+///     .min_connections(10)
+///     .dialer(Box::new(|_| {
+///         TcpStream::connect("127.0.0.1:8080")
+///             .map(|s| netconnpool::ConnectionType::Tcp(s))
+///             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+///     }))
+///     .build()
+///     .unwrap();
+/// ```
+pub struct ConfigBuilder {
+    config: Config,
+}
+
+impl Default for ConfigBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ConfigBuilder {
+    /// 创建新的 ConfigBuilder，使用客户端模式的默认值
+    pub fn new() -> Self {
+        Self {
+            config: Config::default_config(),
+        }
+    }
+
+    /// 创建新的 ConfigBuilder，使用服务器端模式的默认值
+    pub fn new_server() -> Self {
+        Self {
+            config: Config::default_server_config(),
+        }
+    }
+
+    /// 设置连接池模式
+    pub fn mode(mut self, mode: PoolMode) -> Self {
+        self.config.mode = mode;
+        self
+    }
+
+    /// 设置最大连接数
+    pub fn max_connections(mut self, max_connections: usize) -> Self {
+        self.config.max_connections = max_connections;
+        self
+    }
+
+    /// 设置最小连接数（预热连接数）
+    pub fn min_connections(mut self, min_connections: usize) -> Self {
+        self.config.min_connections = min_connections;
+        self
+    }
+
+    /// 设置最大空闲连接数
+    pub fn max_idle_connections(mut self, max_idle_connections: usize) -> Self {
+        self.config.max_idle_connections = max_idle_connections;
+        self
+    }
+
+    /// 设置连接创建超时时间
+    pub fn connection_timeout(mut self, connection_timeout: Duration) -> Self {
+        self.config.connection_timeout = connection_timeout;
+        self
+    }
+
+    /// 设置空闲连接超时时间
+    pub fn idle_timeout(mut self, idle_timeout: Duration) -> Self {
+        self.config.idle_timeout = idle_timeout;
+        self
+    }
+
+    /// 设置连接最大生命周期
+    pub fn max_lifetime(mut self, max_lifetime: Duration) -> Self {
+        self.config.max_lifetime = max_lifetime;
+        self
+    }
+
+    /// 设置获取连接的超时时间
+    pub fn get_connection_timeout(mut self, get_connection_timeout: Duration) -> Self {
+        self.config.get_connection_timeout = get_connection_timeout;
+        self
+    }
+
+    /// 设置健康检查间隔
+    pub fn health_check_interval(mut self, health_check_interval: Duration) -> Self {
+        self.config.health_check_interval = health_check_interval;
+        self
+    }
+
+    /// 设置健康检查超时时间
+    pub fn health_check_timeout(mut self, health_check_timeout: Duration) -> Self {
+        self.config.health_check_timeout = health_check_timeout;
+        self
+    }
+
+    /// 设置连接泄漏检测超时时间
+    pub fn connection_leak_timeout(mut self, connection_leak_timeout: Duration) -> Self {
+        self.config.connection_leak_timeout = connection_leak_timeout;
+        self
+    }
+
+    /// 设置连接创建函数（客户端模式）
+    pub fn dialer(mut self, dialer: Dialer) -> Self {
+        self.config.dialer = Some(dialer);
+        self
+    }
+
+    /// 设置网络监听器（服务器端模式）
+    pub fn listener(mut self, listener: std::net::TcpListener) -> Self {
+        self.config.listener = Some(listener);
+        self
+    }
+
+    /// 设置连接接受函数（服务器端模式）
+    pub fn acceptor(mut self, acceptor: Acceptor) -> Self {
+        self.config.acceptor = Some(acceptor);
+        self
+    }
+
+    /// 设置健康检查函数
+    pub fn health_checker(mut self, health_checker: HealthChecker) -> Self {
+        self.config.health_checker = Some(health_checker);
+        self
+    }
+
+    /// 设置连接关闭函数
+    pub fn close_conn(mut self, close_conn: Box<CloseConnCallback>) -> Self {
+        self.config.close_conn = Some(close_conn);
+        self
+    }
+
+    /// 设置连接创建后回调
+    pub fn on_created(mut self, on_created: Box<OnCreatedCallback>) -> Self {
+        self.config.on_created = Some(on_created);
+        self
+    }
+
+    /// 设置连接借出前回调
+    pub fn on_borrow(mut self, on_borrow: Box<BorrowReturnCallback>) -> Self {
+        self.config.on_borrow = Some(on_borrow);
+        self
+    }
+
+    /// 设置连接归还前回调
+    pub fn on_return(mut self, on_return: Box<BorrowReturnCallback>) -> Self {
+        self.config.on_return = Some(on_return);
+        self
+    }
+
+    /// 设置是否启用统计信息
+    pub fn enable_stats(mut self, enable_stats: bool) -> Self {
+        self.config.enable_stats = enable_stats;
+        self
+    }
+
+    /// 设置是否启用健康检查
+    pub fn enable_health_check(mut self, enable_health_check: bool) -> Self {
+        self.config.enable_health_check = enable_health_check;
+        self
+    }
+
+    /// 设置是否在归还 UDP 连接时清空读取缓冲区
+    pub fn clear_udp_buffer_on_return(mut self, clear_udp_buffer_on_return: bool) -> Self {
+        self.config.clear_udp_buffer_on_return = clear_udp_buffer_on_return;
+        self
+    }
+
+    /// 设置 UDP 缓冲区清理超时时间
+    pub fn udp_buffer_clear_timeout(mut self, udp_buffer_clear_timeout: Duration) -> Self {
+        self.config.udp_buffer_clear_timeout = udp_buffer_clear_timeout;
+        self
+    }
+
+    /// 设置 UDP 缓冲区清理最大包数
+    pub fn max_buffer_clear_packets(mut self, max_buffer_clear_packets: usize) -> Self {
+        self.config.max_buffer_clear_packets = max_buffer_clear_packets;
+        self
+    }
+
+    /// 构建并验证配置
+    ///
+    /// # 返回值
+    /// - `Ok(Config)`: 配置有效，返回构建好的配置
+    /// - `Err(NetConnPoolError)`: 配置无效，返回错误
+    pub fn build(mut self) -> Result<Config> {
+        self.config.apply_defaults();
+        self.config.validate()?;
+        Ok(self.config)
+    }
+
+    /// 构建配置但不验证（用于测试场景）
+    pub fn build_unchecked(mut self) -> Config {
+        self.config.apply_defaults();
+        self.config
+    }
+}
