@@ -166,7 +166,7 @@ fn test_connection_id_uniqueness() {
 
     let mut ids = std::collections::HashSet::new();
     for conn in &connections {
-        assert!(ids.insert(conn.id), "重复的 ID: {}", conn.id);
+        assert!(ids.insert(conn.id()), "重复的 ID: {}", conn.id());
     }
     println!("    ✅ 通过");
 }

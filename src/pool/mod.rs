@@ -11,7 +11,7 @@ use crate::mode::PoolMode;
 use crate::protocol::Protocol;
 use crate::stats::StatsCollector;
 use crate::udp_utils::clear_udp_read_buffer;
-use crossbeam::queue::SegQueue;
+use crossbeam_queue::SegQueue;
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -285,6 +285,26 @@ impl Pool {
     /// ```
     pub fn get(&self) -> Result<PooledConnection> {
         self.get_with_timeout(self.inner.config.get_connection_timeout)
+    }
+
+    /// 尝试获取连接（非阻塞）
+    ///
+    /// 如果无法立即获取连接，将立即返回错误，不会等待。
+    /// 这是 `get_with_timeout(Duration::ZERO)` 的便捷包装。
+    ///
+    /// # 返回值
+    /// - `Ok(PooledConnection)`: 成功获取连接
+    /// - `Err(NetConnPoolError::PoolExhausted)`: 池已耗尽
+    /// - `Err(NetConnPoolError::PoolClosed)`: 池已关闭
+    pub fn try_get(&self) -> Result<PooledConnection> {
+        self.get_with_timeout(Duration::ZERO)
+    }
+
+    /// 获取连接的语义别名（acquire 语义更清晰）
+    ///
+    /// 与 `get()` 功能完全相同，只是提供更符合 Rust 习惯的命名。
+    pub fn acquire(&self) -> Result<PooledConnection> {
+        self.get()
     }
 
     /// GetIPv4 获取一个IPv4连接
@@ -620,7 +640,7 @@ impl PoolInner {
                     // 优化：在 get() 时清理 UDP 缓冲区，避免阻塞归还操作
                     // 由即将使用该连接的线程负责清理历史残存数据
                     if self.config.clear_udp_buffer_on_return
-                        && conn.get_protocol() == Protocol::UDP
+                        && conn.protocol() == Protocol::UDP
                     {
                         if let Some(udp_socket) = conn.udp_conn() {
                             let timeout = self.config.udp_buffer_clear_timeout;
@@ -791,7 +811,7 @@ impl PoolInner {
 
         // Check requirements
         if let Some(p) = required_protocol {
-            if p != Protocol::Unknown && conn.get_protocol() != p {
+            if p != Protocol::Unknown && conn.protocol() != p {
                 // Mismatch, close and return specific error or handled by caller?
                 // Caller expects specific protocol.
                 // We should close this connection as it's useless for the caller.
@@ -807,7 +827,7 @@ impl PoolInner {
             }
         }
         if let Some(ip) = required_ip_version {
-            if ip != IPVersion::Unknown && conn.get_ip_version() != ip {
+            if ip != IPVersion::Unknown && conn.ip_version() != ip {
                 self.close_connection(&conn);
                 return Err(NetConnPoolError::NoConnectionForIPVersion {
                     required: format!("{:?}", ip),
@@ -870,12 +890,12 @@ impl PoolInner {
 
         if let Some(stats) = &self.stats_collector {
             stats.increment_total_connections_created();
-            match conn.get_ip_version() {
+            match conn.ip_version() {
                 IPVersion::IPv4 => stats.increment_current_ipv4_connections(1),
                 IPVersion::IPv6 => stats.increment_current_ipv6_connections(1),
                 _ => {}
             }
-            match conn.get_protocol() {
+            match conn.protocol() {
                 Protocol::TCP => stats.increment_current_tcp_connections(1),
                 Protocol::UDP => stats.increment_current_udp_connections(1),
                 _ => {}
@@ -916,7 +936,7 @@ impl PoolInner {
         // 这样可以确保 return_connection 操作极致轻量，不会因为底层 I/O 阻塞
 
         // Put back to idle list (无锁操作)
-        if let Some(idx) = Self::get_bucket_index(conn.get_protocol(), conn.get_ip_version()) {
+        if let Some(idx) = Self::get_bucket_index(conn.protocol(), conn.ip_version()) {
             // 使用提取的辅助方法处理 CAS 逻辑
             self.try_push_idle(conn, idx);
         } else {
@@ -963,12 +983,12 @@ impl PoolInner {
 
         if let Some(stats) = &self.stats_collector {
             stats.increment_total_connections_closed();
-            match conn.get_ip_version() {
+            match conn.ip_version() {
                 IPVersion::IPv4 => stats.increment_current_ipv4_connections(-1),
                 IPVersion::IPv6 => stats.increment_current_ipv6_connections(-1),
                 _ => {}
             }
-            match conn.get_protocol() {
+            match conn.protocol() {
                 Protocol::TCP => stats.increment_current_tcp_connections(-1),
                 Protocol::UDP => stats.increment_current_udp_connections(-1),
                 _ => {}
@@ -1089,12 +1109,12 @@ impl PoolInner {
 
     fn update_stats_on_idle_pop(&self, stats: &StatsCollector, conn: &Connection) {
         stats.increment_current_idle_connections(-1);
-        match conn.get_ip_version() {
+        match conn.ip_version() {
             IPVersion::IPv4 => stats.increment_current_ipv4_idle_connections(-1),
             IPVersion::IPv6 => stats.increment_current_ipv6_idle_connections(-1),
             _ => {}
         }
-        match conn.get_protocol() {
+        match conn.protocol() {
             Protocol::TCP => stats.increment_current_tcp_idle_connections(-1),
             Protocol::UDP => stats.increment_current_udp_idle_connections(-1),
             _ => {}
@@ -1103,12 +1123,12 @@ impl PoolInner {
 
     fn update_stats_on_idle_push(&self, stats: &StatsCollector, conn: &Connection) {
         stats.increment_current_idle_connections(1);
-        match conn.get_ip_version() {
+        match conn.ip_version() {
             IPVersion::IPv4 => stats.increment_current_ipv4_idle_connections(1),
             IPVersion::IPv6 => stats.increment_current_ipv6_idle_connections(1),
             _ => {}
         }
-        match conn.get_protocol() {
+        match conn.protocol() {
             Protocol::TCP => stats.increment_current_tcp_idle_connections(1),
             Protocol::UDP => stats.increment_current_udp_idle_connections(1),
             _ => {}
@@ -1137,7 +1157,7 @@ impl PoolInner {
 
         conn.mark_idle();
 
-        if let Some(idx) = Self::get_bucket_index(conn.get_protocol(), conn.get_ip_version()) {
+        if let Some(idx) = Self::get_bucket_index(conn.protocol(), conn.ip_version()) {
             // 使用提取的辅助方法处理 CAS 逻辑
             self.try_push_idle(conn, idx);
         } else {

@@ -24,11 +24,17 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Install cargo-deny
+        run: cargo install cargo-deny
+
       - name: Check formatting
         run: cargo fmt --check
 
       - name: Clippy linting
         run: cargo clippy --all-targets -- -W clippy::all
+
+      - name: Check dependencies
+        run: cargo deny check
 
       - name: Build
         run: cargo build --verbose

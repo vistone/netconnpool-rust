@@ -11,10 +11,9 @@ categories = ["network-programming"]
 
 [dependencies]
 thiserror = "1.0"
-crossbeam = "0.8"
+crossbeam-queue = "0.3"
 
 [dev-dependencies]
-tokio-test = "0.4"
 
 [lib]
 name = "netconnpool"

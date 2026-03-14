@@ -191,14 +191,26 @@ impl Connection {
         &self.conn
     }
 
-    /// GetProtocol 获取连接的协议类型
-    pub fn get_protocol(&self) -> Protocol {
+    /// 获取连接的协议类型
+    pub fn protocol(&self) -> Protocol {
         self.protocol
     }
 
-    /// GetIPVersion 获取连接的IP版本
-    pub fn get_ip_version(&self) -> IPVersion {
+    /// 获取连接的IP版本
+    pub fn ip_version(&self) -> IPVersion {
         self.ip_version
+    }
+
+    /// 获取连接的协议类型（向后兼容别名）
+    #[deprecated(since = "1.1.0", note = "请使用 `protocol()` 代替")]
+    pub fn get_protocol(&self) -> Protocol {
+        self.protocol()
+    }
+
+    /// 获取连接的IP版本（向后兼容别名）
+    #[deprecated(since = "1.1.0", note = "请使用 `ip_version()` 代替")]
+    pub fn get_ip_version(&self) -> IPVersion {
+        self.ip_version()
     }
 
     /// 获取连接 ID
