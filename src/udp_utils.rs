@@ -16,7 +16,9 @@ pub fn clear_udp_read_buffer(
     // 切换到非阻塞模式
     socket.set_nonblocking(true)?;
 
-    let mut buf = [0u8; 65536]; // 足够大的缓冲区
+    // 使用堆分配缓冲区防止栈溢出
+    // UDP 数据包最大 65535 字节，使用 64KB 确保能接收完整数据包
+    let mut buf = vec![0u8; 65536];
     let max = if max_packets == 0 { 100 } else { max_packets };
     let start = Instant::now();
 
@@ -24,7 +26,7 @@ pub fn clear_udp_read_buffer(
         if !timeout.is_zero() && start.elapsed() >= timeout {
             break;
         }
-        match socket.recv(&mut buf) {
+        match socket.recv(&mut buf[..]) {
             Ok(_) => {
                 // 成功读取，继续清理
                 continue;

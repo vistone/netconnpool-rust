@@ -353,10 +353,10 @@ impl StatsCollector {
     /// GetStats 获取当前统计信息快照
     pub fn get_stats(&self) -> Stats {
         // 动态计算平均值，避免在快速路径上计算
-        let total_gets = self.stats.successful_gets.load(Ordering::Relaxed);
+        let total_gets = self.stats.successful_gets.load(Ordering::Relaxed).max(0) as u64;
         let total_time = self.stats.total_get_time.load(Ordering::Relaxed);
         let avg_time = if total_gets > 0 {
-            total_time / total_gets as u64
+            total_time / total_gets
         } else {
             0
         };
